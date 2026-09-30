@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install GTK 3 headers
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev
+      - name: Vet (Linux + Windows)
+        run: make vet
+      - name: Test
+        run: make test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install GTK 3 headers
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libgtk-3-dev
+      - name: Build Windows and Linux binaries
+        run: make build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agendling-binaries
+          path: bin/

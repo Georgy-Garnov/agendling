@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Agendling">
+  <!-- calendar page -->
+  <rect x="12" y="20" width="104" height="96" rx="14" fill="#ffffff" stroke="#2f3b4c" stroke-width="6"/>
+  <path d="M12 34a14 14 0 0 1 14-14h76a14 14 0 0 1 14 14v12H12z" fill="#db4437"/>
+  <rect x="34" y="8" width="10" height="24" rx="5" fill="#2f3b4c"/>
+  <rect x="84" y="8" width="10" height="24" rx="5" fill="#2f3b4c"/>
+  <!-- agenda lines -->
+  <rect x="28" y="60" width="44" height="9" rx="4.5" fill="#1a73e8"/>
+  <rect x="28" y="78" width="30" height="9" rx="4.5" fill="#0b8043"/>
+  <rect x="28" y="96" width="38" height="9" rx="4.5" fill="#8e24aa"/>
+  <!-- small bell: the reminder -->
+  <g transform="translate(78 58)">
+    <path d="M14 4c-7 0-11 5-11 12v8l-4 5h30l-4-5v-8c0-7-4-12-11-12z" fill="#f4b400" stroke="#2f3b4c" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="14" cy="33" r="4" fill="#2f3b4c"/>
+  </g>
+</svg>

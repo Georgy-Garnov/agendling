@@ -1,0 +1,36 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead? Screenshots help.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `agendling --version` (or the release you downloaded).
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows 10, Windows 11, Ubuntu / GNOME, Other Linux]
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: CalDAV server (if sync-related)
+      description: e.g. Nextcloud 29, Fastmail, Radicale. Never paste passwords.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log excerpt
+      description: From `agendling.log` in the data directory (see README → Data and privacy). Remove anything private.
+      render: text

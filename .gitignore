@@ -1,0 +1,6 @@
+/bin/
+/dist/
+*.test
+*.test.exe
+*.log
+/sound/
