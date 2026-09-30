@@ -17,7 +17,8 @@ Open an [issue](https://github.com/Georgy-Garnov/agendling/issues/new/choose) wi
 
 - Go 1.26+.
 - Linux: `sudo apt install pkg-config libgtk-3-dev` to build the GTK UI.
-- The Windows UI cross-compiles from any OS without a C compiler: `make windows`.
+- The Windows UI cross-compiles from any OS without a C compiler: `make windows`. Its icon,
+  manifest and version info live in `cmd/agendling/winres/winres.json`.
 
 ```sh
 make test   # unit + integration tests (no network, no display needed)

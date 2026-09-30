@@ -1,15 +1,28 @@
 name: Release
 
+# Builds both binaries on a version tag, signs the Windows exe via SignPath (when
+# configured) and publishes a GitHub release.
+#
+# Code signing is enabled by setting, in the repository settings:
+#   secret   SIGNPATH_API_TOKEN          SignPath CI user API token
+#   variable SIGNPATH_ORGANIZATION_ID    SignPath organization ID
+#   variable SIGNPATH_PROJECT_SLUG       e.g. agendling
+#   variable SIGNPATH_POLICY_SLUG        e.g. release-signing
+# Without them the release is published unsigned.
+
 on:
   push:
     tags: ["v*"]
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
+    outputs:
+      windows-artifact-id: ${{ steps.upload-windows.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,12 +36,70 @@ jobs:
         run: make test
       - name: Build
         run: make build VERSION=${GITHUB_REF_NAME}
+      - name: Upload Windows binary (unsigned)
+        id: upload-windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-unsigned
+          path: bin/agendling.exe
+          if-no-files-found: error
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: bin/agendling-linux-amd64
+          if-no-files-found: error
+
+  sign:
+    needs: build
+    if: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Submit signing request to SignPath
+        uses: SignPath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ needs.build.outputs.windows-artifact-id }}
+          wait-for-completion: true
+          # Each release is approved manually in SignPath; allow time for that.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed
+      - name: Upload signed Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-signed
+          path: signed/agendling.exe
+          if-no-files-found: error
+
+  publish:
+    needs: [build, sign]
+    if: ${{ always() && needs.build.result == 'success' && (needs.sign.result == 'success' || needs.sign.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
       - name: Package
         run: |
-          mkdir -p dist
-          cp LICENSE THIRD_PARTY_NOTICES.md README.md bin/
-          (cd bin && zip -q ../dist/agendling-${GITHUB_REF_NAME}-windows-amd64.zip agendling.exe LICENSE THIRD_PARTY_NOTICES.md README.md)
-          (cd bin && tar czf ../dist/agendling-${GITHUB_REF_NAME}-linux-amd64.tar.gz agendling-linux-amd64 LICENSE THIRD_PARTY_NOTICES.md README.md)
+          set -euo pipefail
+          mkdir -p pkg/windows pkg/linux dist
+          if [ -f artifacts/windows-signed/agendling.exe ]; then
+            echo "Using the signed Windows binary"
+            cp artifacts/windows-signed/agendling.exe pkg/windows/
+          else
+            echo "Code signing not configured: using the unsigned Windows binary"
+            cp artifacts/windows-unsigned/agendling.exe pkg/windows/
+          fi
+          cp artifacts/linux/agendling-linux-amd64 pkg/linux/
+          chmod +x pkg/linux/agendling-linux-amd64
+          for d in pkg/windows pkg/linux; do cp LICENSE THIRD_PARTY_NOTICES.md README.md "$d/"; done
+          (cd pkg/windows && zip -q "../../dist/agendling-${GITHUB_REF_NAME}-windows-amd64.zip" *)
+          (cd pkg/linux && tar czf "../../dist/agendling-${GITHUB_REF_NAME}-linux-amd64.tar.gz" *)
           (cd dist && sha256sum * > SHA256SUMS.txt)
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2

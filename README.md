@@ -79,8 +79,9 @@ meeting or a freshly booked one.
 
 There is no installer; to uninstall, see [Data and privacy](#data-and-privacy).
 
-> Windows SmartScreen may warn about an unrecognised app, because releases aren't code-signed.
-> Choose *More info → Run anyway*, or [build it yourself](#building-from-source).
+> Until code signing is in place, Windows SmartScreen may warn about an unrecognised app. Choose
+> *More info → Run anyway*, or [build it yourself](#building-from-source). See the
+> [code signing policy](CODE_SIGNING.md).
 
 ### Linux (Ubuntu 22.04+ and other GTK 3 desktops)
 
@@ -233,7 +234,8 @@ make help      # all targets
 Without `make`:
 
 ```sh
-# Windows binary, from any OS
+# Windows binary, from any OS (the first command embeds the icon, manifest and version info)
+go run github.com/tc-hib/go-winres@v0.3.3 make --in cmd/agendling/winres/winres.json --out cmd/agendling/rsrc --arch amd64
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-H windowsgui -s -w" -o bin/agendling.exe ./cmd/agendling
 
 # Linux binary, on Linux
@@ -242,15 +244,19 @@ CGO_ENABLED=1 go build -ldflags "-s -w" -o bin/agendling-linux-amd64 ./cmd/agend
 
 On Windows you can also run `.\build.ps1`.
 
-`cmd/agendling/rsrc_windows_amd64.syso` embeds the Windows manifest (Common Controls v6 and
-per-monitor DPI awareness), which the UI toolkit needs. It's committed; regenerate it with
-`make syso` if you change `agendling.manifest`.
+The Windows icon, manifest (Common Controls v6 and per-monitor DPI awareness, which the UI
+toolkit needs) and version information are defined in `cmd/agendling/winres/winres.json`.
+`make windows` turns them into `cmd/agendling/rsrc_windows_amd64.syso` with
+[go-winres](https://github.com/tc-hib/go-winres) before building (the `go run … go-winres` line
+above does the same).
 
 ### Releases
 
 Pushing a tag like `v1.0.0` runs the [release workflow](.github/workflows/release.yml). It runs
-the tests, builds both binaries with the version embedded (`agendling --version`), packages them
-with `LICENSE` and `THIRD_PARTY_NOTICES.md`, and publishes a GitHub release with checksums.
+the tests, builds both binaries with the version embedded (`agendling --version` and the Windows
+file properties), signs the Windows exe through SignPath when signing is configured (see
+[CODE_SIGNING.md](CODE_SIGNING.md)), packages them with `LICENSE` and `THIRD_PARTY_NOTICES.md`, and
+publishes a GitHub release with checksums.
 
 ## Architecture
 
@@ -287,7 +293,8 @@ Everything below `internal/ui` and `internal/gtkui` is shared, so both builds be
 - **Tasks (VTODO) and CardDAV contacts** aren't supported.
 - **Memory on Linux:** the GTK 3 build needs about 65 MB of RAM, which is typical for GTK apps.
   The 26 MB figure applies to Windows.
-- **Unsigned releases:** Windows SmartScreen may warn on first launch.
+- **Unsigned releases (for now):** Windows SmartScreen may warn on first launch until code signing
+  through SignPath Foundation is in place.
 
 ## Contributing
 

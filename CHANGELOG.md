@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Windows executable now carries an icon and version information (product name, version,
+  copyright), generated from `cmd/agendling/winres/winres.json` with go-winres.
+- Code signing policy (`CODE_SIGNING.md`) and release workflow support for signing the Windows
+  executable through SignPath Foundation.
+
 ## [0.1.0] - 2026-09-30
 
 ### Added
