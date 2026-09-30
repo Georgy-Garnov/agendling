@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-30
+
 ### Added
 - First public version of Agendling for Windows (native Win32 UI) and Linux (GTK 3).
 - Day, Week, 2-week and Month views with colour-coded calendars.
@@ -18,3 +20,6 @@ All notable changes to this project are documented here. The format follows
 - Time-zone-correct recurrence (repeats in the event's own TZID) and VTIMEZONE generation.
 - Encrypted password storage (Windows DPAPI; AES-GCM with the desktop keyring on Linux).
 - Run at startup / start minimized.
+
+[Unreleased]: https://github.com/Georgy-Garnov/agendling/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Georgy-Garnov/agendling/releases/tag/v0.1.0
