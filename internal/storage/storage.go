@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS sources (
 	enabled       INTEGER NOT NULL DEFAULT 1,
 	calendar_path TEXT NOT NULL DEFAULT '',
 	last_sync     INTEGER NOT NULL DEFAULT 0,
-	last_error    TEXT NOT NULL DEFAULT ''
+	last_error    TEXT NOT NULL DEFAULT '',
+	sync_state    TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS events (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,6 +78,14 @@ func migrate(db *sql.DB) error {
 	}
 	if n == 0 {
 		if _, err := db.Exec(`ALTER TABLE events ADD COLUMN tzid TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'sync_state'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := db.Exec(`ALTER TABLE sources ADD COLUMN sync_state TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
 	}
@@ -190,8 +199,11 @@ func (s *Store) SaveSource(src *model.CalendarSource) error {
 			src.ID, err = res.LastInsertId()
 		}
 	} else {
-		_, err = s.db.Exec(`UPDATE sources SET name=?, type=?, url=?, username=?, password=?, color=?, sync_interval=?, enabled=?, calendar_path=?
+		// Cached sync state belongs to the old account when the server or login changes.
+		_, err = s.db.Exec(`UPDATE sources SET sync_state = CASE WHEN url=? AND username=? THEN sync_state ELSE '' END,
+			name=?, type=?, url=?, username=?, password=?, color=?, sync_interval=?, enabled=?, calendar_path=?
 			WHERE id=?`,
+			src.URL, src.Username,
 			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath, src.ID)
 	}
 	s.mu.Unlock()
@@ -214,6 +226,21 @@ func (s *Store) SetSyncStatus(id int64, calendarPath string, at time.Time, syncE
 		return err
 	}
 	_, err := s.db.Exec(`UPDATE sources SET calendar_path=?, last_sync=?, last_error='' WHERE id=?`, calendarPath, at.Unix(), id)
+	return err
+}
+
+// SyncState returns the opaque sync engine state of a source ("" when none is cached).
+func (s *Store) SyncState(id int64) (string, error) {
+	var st string
+	err := s.db.QueryRow(`SELECT sync_state FROM sources WHERE id=?`, id).Scan(&st)
+	return st, err
+}
+
+// SetSyncState stores the opaque sync engine state of a source.
+func (s *Store) SetSyncState(id int64, st string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.db.Exec(`UPDATE sources SET sync_state=? WHERE id=?`, st, id)
 	return err
 }
 
@@ -401,6 +428,17 @@ func (s *Store) PurgeUID(calendarID int64, uid string) error {
 // ReplaceRemoteEvents atomically replaces all clean (non-dirty, non-deleted) events of a
 // calendar with the freshly fetched set. Pending local changes are preserved.
 func (s *Store) ReplaceRemoteEvents(calendarID int64, events []*model.Event) error {
+	return s.replaceRemote(calendarID, nil, events)
+}
+
+// ReplaceCollectionEvents is ReplaceRemoteEvents limited to the server collections with the
+// given path prefixes; clean events stored under other collections are kept.
+func (s *Store) ReplaceCollectionEvents(calendarID int64, collections []string, events []*model.Event) error {
+	return s.replaceRemote(calendarID, collections, events)
+}
+
+// replaceRemote replaces clean events of the given collections, or of the whole calendar when nil.
+func (s *Store) replaceRemote(calendarID int64, collections []string, events []*model.Event) error {
 	s.mu.Lock()
 	err := func() error {
 		tx, err := s.db.Begin()
@@ -422,8 +460,16 @@ func (s *Store) ReplaceRemoteEvents(calendarID int64, events []*model.Event) err
 		}
 		rows.Close()
 
-		if _, err := tx.Exec(`DELETE FROM events WHERE calendar_id=? AND dirty=0 AND deleted=0`, calendarID); err != nil {
-			return err
+		if collections == nil {
+			if _, err := tx.Exec(`DELETE FROM events WHERE calendar_id=? AND dirty=0 AND deleted=0`, calendarID); err != nil {
+				return err
+			}
+		}
+		for _, coll := range collections {
+			if _, err := tx.Exec(`DELETE FROM events WHERE calendar_id=? AND dirty=0 AND deleted=0 AND instr(href, ?)=1`,
+				calendarID, coll); err != nil {
+				return err
+			}
 		}
 		for _, e := range events {
 			if pending[e.UID] {
