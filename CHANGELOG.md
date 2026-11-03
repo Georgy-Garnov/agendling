@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-03
+
+### Fixed
+- iCloud calendars showed no events (#1): the calendar home set announced on an account partition
+  host (`pNN-caldav.icloud.com`) is now followed, and events are requested with a plain
+  `<calendar-data/>`, which iCloud answers with complete objects. Credentials are only sent to
+  the new host over HTTPS within the same parent domain.
+- The event query time range is sent in UTC; it was shifted by the local UTC offset.
+- Each sync logs how many calendars and events it fetched, and unparsable objects are skipped
+  with a log line instead of failing the sync.
+- "Sync now" in Settings did not sync an account added (or edited) in the same dialog, so its
+  last-sync time never appeared; the account list now also refreshes again after 10 seconds.
+
 ## [0.2.0] - 2026-10-08
 
 ### Added
@@ -41,6 +54,7 @@ All notable changes to this project are documented here. The format follows
 - Encrypted password storage (Windows DPAPI; AES-GCM with the desktop keyring on Linux).
 - Run at startup / start minimized.
 
-[Unreleased]: https://github.com/Georgy-Garnov/agendling/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Georgy-Garnov/agendling/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/Georgy-Garnov/agendling/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Georgy-Garnov/agendling/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Georgy-Garnov/agendling/releases/tag/v0.1.0
