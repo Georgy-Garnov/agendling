@@ -261,20 +261,6 @@ func newHTTPClient(src *model.CalendarSource) webdav.HTTPClient {
 	return etagFixClient{politeClient{auth}}
 }
 
-// NewClient builds an authenticated CalDAV client for a source.
-func NewClient(src *model.CalendarSource) (*caldav.Client, error) {
-	return caldav.NewClient(newHTTPClient(src), src.URL)
-}
-
-// Discover resolves the event collections of a source and the collection used for new events.
-func Discover(ctx context.Context, c *caldav.Client, src *model.CalendarSource) (collections []string, writePath string, err error) {
-	_, collections, err = discover(ctx, c, src)
-	if err != nil {
-		return nil, "", err
-	}
-	return collections, writePathFor(collections, src.CalendarPath), nil
-}
-
 // writePathFor keeps the configured write collection when it still exists, else uses the first one.
 func writePathFor(collections []string, configured string) string {
 	for _, p := range collections {
@@ -285,24 +271,49 @@ func writePathFor(collections []string, configured string) string {
 	return collections[0]
 }
 
-// discover finds the calendar home set (empty when the URL is a bare collection) and the event collections.
-func discover(ctx context.Context, c *caldav.Client, src *model.CalendarSource) (home string, collections []string, err error) {
+// discovery tells where the event collections of a source live.
+type discovery struct {
+	endpoint    string // server root the paths refer to; "" means the configured URL
+	home        string // calendar home set ("" when the URL is a bare collection)
+	collections []string
+}
+
+// discover finds the calendar home set and the event collections of a source.
+func discover(ctx context.Context, hc webdav.HTTPClient, src *model.CalendarSource) (discovery, error) {
 	u, err := url.Parse(src.URL)
 	if err != nil {
-		return "", nil, fmt.Errorf("invalid URL: %w", err)
+		return discovery{}, fmt.Errorf("invalid URL: %w", err)
+	}
+	c, err := caldav.NewClient(hc, src.URL)
+	if err != nil {
+		return discovery{}, err
 	}
 	direct := cleanDir(u.Path)
 
+	var d discovery
 	var cals []caldav.Calendar
 	principal, perr := c.FindCurrentUserPrincipal(ctx)
 	if perr == nil {
-		if home, perr = c.FindCalendarHomeSet(ctx, principal); perr == nil {
-			cals, perr = c.FindCalendars(ctx, home)
+		var home *url.URL
+		if home, perr = findHomeSet(ctx, hc, u, principal); perr == nil {
+			d.home = home.Path
+			if home.Host != u.Host {
+				if sameService(u, home) {
+					d.endpoint = rootURL(home)
+					c, err = caldav.NewClient(hc, d.endpoint)
+					if err != nil {
+						return discovery{}, err
+					}
+				} else {
+					log.Printf("caldav: calendar home %s is on an unrelated host; using its path on %s", home, u.Host)
+				}
+			}
+			cals, perr = c.FindCalendars(ctx, d.home)
 		}
 	}
 	var te *ThrottledError
 	if errors.As(perr, &te) {
-		return "", nil, perr // not a discovery problem; the engine backs off
+		return discovery{}, perr // not a discovery problem; the engine backs off
 	}
 	if perr != nil || len(cals) == 0 {
 		// Server without discovery support: treat the URL as the collection itself.
@@ -310,25 +321,26 @@ func discover(ctx context.Context, c *caldav.Client, src *model.CalendarSource) 
 			if perr == nil {
 				perr = errors.New("no calendars found")
 			}
-			return "", nil, fmt.Errorf("calendar discovery failed: %w", perr)
+			return discovery{}, fmt.Errorf("calendar discovery failed: %w", perr)
 		}
-		return "", []string{direct}, nil
+		return discovery{collections: []string{direct}}, nil
 	}
 
 	for _, cal := range cals {
 		if cleanDir(cal.Path) == direct {
-			return "", []string{cal.Path}, nil // URL points to a specific calendar
+			// URL points to a specific calendar
+			return discovery{endpoint: d.endpoint, collections: []string{cal.Path}}, nil
 		}
 	}
 	for _, cal := range cals {
 		if supportsEvents(cal) {
-			collections = append(collections, cal.Path)
+			d.collections = append(d.collections, cal.Path)
 		}
 	}
-	if len(collections) == 0 {
-		return "", nil, errors.New("account has no event calendars")
+	if len(d.collections) == 0 {
+		return discovery{}, errors.New("account has no event calendars")
 	}
-	return home, collections, nil
+	return d, nil
 }
 
 func supportsEvents(cal caldav.Calendar) bool {
@@ -363,19 +375,20 @@ func cleanDir(p string) string {
 // everything is rediscovered and re-fetched.
 func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSource) ([]*model.Event, error) {
 	hc := newHTTPClient(src)
-	c, err := caldav.NewClient(hc, src.URL)
-	if err != nil {
-		return nil, err
-	}
 	now := time.Now()
 	st := loadState(store, src.ID)
 	full := st.needsFull(now)
 	if full {
-		home, collections, err := discover(ctx, c, src)
+		d, err := discover(ctx, hc, src)
 		if err != nil {
 			return nil, err
 		}
-		st = syncState{Home: home, Collections: collections}
+		st = syncState{Version: stateVersion, Endpoint: d.endpoint, Home: d.home, Collections: d.collections}
+		log.Printf("sync %q: discovered %d calendar(s) on %s", src.Name, len(st.Collections), st.endpoint(src.URL))
+	}
+	c, err := caldav.NewClient(hc, st.endpoint(src.URL))
+	if err != nil {
+		return nil, err
 	}
 	src.CalendarPath = writePathFor(st.Collections, src.CalendarPath)
 
@@ -385,7 +398,7 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 		return nil, pushErr
 	}
 
-	tags, err := fetchCTags(ctx, hc, src.URL, &st)
+	tags, err := fetchCTags(ctx, hc, st.endpoint(src.URL), &st)
 	if errors.As(err, &te) {
 		return nil, err
 	}
@@ -404,16 +417,13 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 		return nil, errors.Join(pushErr, saveState(store, src.ID, st))
 	}
 
-	query := &caldav.CalendarQuery{
-		CompRequest: caldav.CalendarCompRequest{Name: ical.CompCalendar, AllProps: true, AllComps: true},
-		CompFilter: caldav.CompFilter{
-			Name:  ical.CompCalendar,
-			Comps: []caldav.CompFilter{{Name: ical.CompEvent, Start: now.Add(-pastWindow), End: now.Add(futureWindow)}},
-		},
+	endpoint, err := url.Parse(st.endpoint(src.URL))
+	if err != nil {
+		return nil, err
 	}
 	var events []*model.Event
 	for _, coll := range changed {
-		objs, err := c.QueryCalendar(ctx, coll, query)
+		objs, err := queryEvents(ctx, hc, endpoint, coll, now.Add(-pastWindow), now.Add(futureWindow))
 		if err != nil {
 			if isNotFound(err) {
 				_ = saveState(store, src.ID, syncState{}) // collection gone: rediscover next time
@@ -421,12 +431,10 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 			return nil, fmt.Errorf("query %s: %w", coll, err)
 		}
 		for _, obj := range objs {
-			if obj.Data == nil {
-				continue
-			}
 			events = append(events, ics.ToEvents(obj.Data, obj.Path, obj.ETag)...)
 		}
 	}
+	log.Printf("sync %q: fetched %d event(s) from %d of %d calendar(s)", src.Name, len(events), len(changed), len(st.Collections))
 
 	known, err := store.KnownUIDs(src.ID)
 	if err != nil {
@@ -582,10 +590,6 @@ func sanitize(uid string) string {
 
 // TestConnection verifies credentials and discovery for the Settings dialog.
 func TestConnection(ctx context.Context, src *model.CalendarSource) (int, error) {
-	c, err := NewClient(src)
-	if err != nil {
-		return 0, err
-	}
-	colls, _, err := Discover(ctx, c, src)
-	return len(colls), err
+	d, err := discover(ctx, newHTTPClient(src), src)
+	return len(d.collections), err
 }

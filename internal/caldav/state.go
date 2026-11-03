@@ -3,13 +3,9 @@ package caldav
 import (
 	"context"
 	"encoding/json"
-	"encoding/xml"
 	"errors"
-	"fmt"
 	"log"
-	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/emersion/go-webdav"
@@ -21,8 +17,16 @@ import (
 // also slides the query window and drops collections that disappeared from the server.
 const fullRefreshEvery = 24 * time.Hour
 
+// stateVersion invalidates caches written by builds that fetched collections differently
+// (2: partition hosts and plain calendar-data; earlier caches may hold tags of empty pulls).
+const stateVersion = 2
+
 // syncState is cached per source between syncs so an unchanged account costs a single PROPFIND.
 type syncState struct {
+	Version int `json:"v,omitempty"`
+	// Endpoint is the server root all paths below refer to, when discovery moved to another
+	// host than the configured URL (iCloud account partitions); "" means the configured URL.
+	Endpoint     string            `json:"endpoint,omitempty"`
 	Home         string            `json:"home,omitempty"` // calendar home set ("" when the URL is the collection)
 	Collections  []string          `json:"collections,omitempty"`
 	CTags        map[string]string `json:"ctags,omitempty"` // collection path -> getctag / sync-token of the last pull
@@ -46,8 +50,15 @@ func saveState(store *storage.Store, id int64, st syncState) error {
 	return store.SetSyncState(id, string(raw))
 }
 
+func (st *syncState) endpoint(src string) string {
+	if st.Endpoint != "" {
+		return st.Endpoint
+	}
+	return src
+}
+
 func (st *syncState) needsFull(now time.Time) bool {
-	return len(st.Collections) == 0 || now.Sub(st.FullAt) >= fullRefreshEvery || now.Before(st.FullAt)
+	return st.Version != stateVersion || len(st.Collections) == 0 || now.Sub(st.FullAt) >= fullRefreshEvery || now.Before(st.FullAt)
 }
 
 const ctagPropfind = `<?xml version="1.0" encoding="utf-8"?>
@@ -91,24 +102,9 @@ func fetchCTags(ctx context.Context, hc webdav.HTTPClient, endpoint string, st *
 }
 
 func propfindCTags(ctx context.Context, hc webdav.HTTPClient, base *url.URL, p, depth string, tags map[string]string) error {
-	u := base.ResolveReference(&url.URL{Path: p})
-	req, err := http.NewRequestWithContext(ctx, "PROPFIND", u.String(), strings.NewReader(ctagPropfind))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", `text/xml; charset="utf-8"`)
-	req.Header.Set("Depth", depth)
-	resp, err := hc.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusMultiStatus {
-		return fmt.Errorf("PROPFIND %s: %s", p, resp.Status)
-	}
 	var ms ctagMultistatus
-	if err := xml.NewDecoder(resp.Body).Decode(&ms); err != nil {
-		return fmt.Errorf("PROPFIND %s: %w", p, err)
+	if err := propfind(ctx, hc, base.ResolveReference(&url.URL{Path: p}), depth, ctagPropfind, &ms); err != nil {
+		return err
 	}
 	for _, r := range ms.Responses {
 		hu, err := url.Parse(r.Href)

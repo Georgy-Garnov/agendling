@@ -157,8 +157,8 @@ func TestSyncSkipsUnchangedCollections(t *testing.T) {
 
 	// Unchanged collection: discovery is cached and the ctag check is the only request.
 	rec.reset()
-	if _, err := SyncSource(ctx, store, src); err != nil {
-		t.Fatal(err)
+	if added, err := SyncSource(ctx, store, src); err != nil || len(added) != 0 {
+		t.Fatalf("unchanged sync: added %d, err %v", len(added), err)
 	}
 	if rec.total() != 1 || rec.count("PROPFIND") != 1 {
 		t.Fatalf("unchanged sync made requests: %v", rec.methods)
@@ -173,8 +173,12 @@ func TestSyncSkipsUnchangedCollections(t *testing.T) {
 	rec.ctag = "2"
 	rec.mu.Unlock()
 	rec.reset()
-	if _, err := SyncSource(ctx, store, src); err != nil {
+	added, err := SyncSource(ctx, store, src)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(added) != 1 || added[0].Title != "Second" {
+		t.Fatalf("new events of an incremental pull: %+v", added)
 	}
 	if rec.count("REPORT") != 1 || len(inRange()) != 2 {
 		t.Fatalf("changed sync: %v, events %v", rec.methods, inRange())
