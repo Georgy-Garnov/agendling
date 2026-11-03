@@ -54,6 +54,10 @@ func (a *App) showSettings() {
 
 	nb, _ := gtk.NotebookNew()
 	sourcesChanged := false
+	// Workers are only (re)started by Engine.Restart, so new or edited sources need one before
+	// they sync; "Sync now" does it right away, otherwise it happens when the dialog closes.
+	workersStale := false
+	closed := false
 
 	// ----- Calendars tab -----
 	const (
@@ -112,7 +116,7 @@ func (a *App) showSettings() {
 	}
 	edit := func(src *model.CalendarSource) {
 		if a.editSource(dlg, src) {
-			sourcesChanged = true
+			sourcesChanged, workersStale = true, true
 			reload()
 		}
 	}
@@ -155,12 +159,25 @@ func (a *App) showSettings() {
 		if err := a.store.DeleteSource(s.ID); err != nil {
 			a.message(dlg, gtk.MESSAGE_ERROR, err.Error())
 		}
-		sourcesChanged = true
+		sourcesChanged, workersStale = true, true
 		reload()
 	}), false, false, 0)
 	btns.PackEnd(button("Sync now", func() {
-		a.svc.Engine.SyncNow()
-		glib.TimeoutAdd(3000, func() bool { reload(); return false })
+		if workersStale {
+			a.svc.Engine.Restart() // starts workers for new sources and syncs all
+			workersStale = false
+		} else {
+			a.svc.Engine.SyncNow()
+		}
+		// A first sync of a new account (discovery included) can take a while.
+		for _, ms := range []uint{3000, 10000} {
+			glib.TimeoutAdd(ms, func() bool {
+				if !closed {
+					reload()
+				}
+				return false
+			})
+		}
 	}), false, false, 0)
 
 	calPage, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 8)
@@ -278,10 +295,13 @@ func (a *App) showSettings() {
 		}
 		break
 	}
+	closed = true
 	dlg.Destroy()
 	a.svc.Audio.Stop()
-	if sourcesChanged {
+	if workersStale {
 		a.svc.Engine.Restart()
+	}
+	if sourcesChanged {
 		a.view.reload()
 	}
 }

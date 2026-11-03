@@ -63,6 +63,10 @@ func (a *App) showSettings() {
 	}
 	reload()
 	sourcesChanged := false
+	// Workers are only (re)started by Engine.Restart, so new or edited sources need one before
+	// they sync; "Sync now" does it right away, otherwise it happens when the dialog closes.
+	workersStale := false
+	closed := false
 
 	selected := func() *model.CalendarSource {
 		i := table.CurrentIndex()
@@ -73,7 +77,7 @@ func (a *App) showSettings() {
 	}
 	editSource := func(src *model.CalendarSource) {
 		if a.editSource(dlg, src) {
-			sourcesChanged = true
+			sourcesChanged, workersStale = true, true
 			reload()
 		}
 	}
@@ -143,13 +147,27 @@ func (a *App) showSettings() {
 										if err := a.store.DeleteSource(s.ID); err != nil {
 											walk.MsgBox(dlg, "Error", err.Error(), walk.MsgBoxIconError)
 										}
-										sourcesChanged = true
+										sourcesChanged, workersStale = true, true
 										reload()
 									}},
 									HSpacer{},
 									PushButton{Text: "Sync now", OnClicked: func() {
-										a.engine.SyncNow()
-										time.AfterFunc(3*time.Second, func() { dlg.Synchronize(reload) })
+										if workersStale {
+											a.engine.Restart() // starts workers for new sources and syncs all
+											workersStale = false
+										} else {
+											a.engine.SyncNow()
+										}
+										// A first sync of a new account (discovery included) can take a while.
+										for _, d := range []time.Duration{3 * time.Second, 10 * time.Second} {
+											time.AfterFunc(d, func() {
+												dlg.Synchronize(func() {
+													if !closed {
+														reload()
+													}
+												})
+											})
+										}
 									}},
 								},
 							},
@@ -247,9 +265,12 @@ func (a *App) showSettings() {
 		return
 	}
 	dlg.Run()
+	closed = true
 	a.audio.Stop()
-	if sourcesChanged {
+	if workersStale {
 		a.engine.Restart()
+	}
+	if sourcesChanged {
 		a.view.Reload()
 	}
 }
