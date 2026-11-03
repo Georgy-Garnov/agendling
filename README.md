@@ -85,14 +85,28 @@ There is no installer; to uninstall, see [Data and privacy](#data-and-privacy).
 
 ### Linux (Ubuntu 22.04+ and other GTK 3 desktops)
 
+**Debian, Ubuntu and derivatives:** download `agendling_<version>_amd64.deb` from
+[Releases](https://github.com/Georgy-Garnov/agendling/releases) and install it; `apt` pulls in the
+required libraries and the app appears in the applications menu:
+
+```sh
+sudo apt install ./agendling_<version>_amd64.deb
+```
+
+To update, install the newer `.deb` the same way; `sudo apt remove agendling` uninstalls it
+(your calendars in `~/.config/Agendling` are kept).
+
+**Other distributions:**
+
 1. Download `agendling-<version>-linux-amd64.tar.gz` from
    [Releases](https://github.com/Georgy-Garnov/agendling/releases) and extract it.
-2. Make sure the runtime libraries are present. They ship with every Ubuntu desktop:
+2. Make sure the runtime libraries are present (GTK 3 and ALSA), e.g. on Ubuntu:
    ```sh
    sudo apt install libgtk-3-0 libasound2
    ```
-3. Run `./agendling-linux-amd64`. To start it automatically, enable
-   **Settings → Behavior → Run at login**; you can also copy the binary to `~/.local/bin`.
+3. Run `./agendling-linux-amd64`; you can also copy the binary to `~/.local/bin`.
+
+To start Agendling automatically, enable **Settings → Behavior → Run at login**.
 
 The tray icon uses the StatusNotifierItem/AppIndicator protocol. On Ubuntu's GNOME the
 *Ubuntu AppIndicators* extension is enabled by default; on other GNOME setups install
@@ -226,6 +240,7 @@ cd agendling
 
 make windows   # bin/agendling.exe          (works on Windows, Linux, macOS; no C compiler)
 make linux     # bin/agendling-linux-amd64  (on Linux)
+make deb       # dist/agendling_<version>_amd64.deb (on Linux, after building the binary)
 make test      # unit and integration tests
 make vet       # static checks for both platforms
 make help      # all targets
@@ -274,6 +289,7 @@ internal/audio      MP3/WAV playback with instant stop (oto v3 + beep decoders),
 internal/secret     credential encryption (DPAPI / keyring + AES-GCM)
 internal/appinfo    product name, version, data directory
 tools/notices       generates THIRD_PARTY_NOTICES.md
+packaging           Debian package definition (nfpm), desktop entry, install script
 ```
 
 Everything below `internal/ui` and `internal/gtkui` is shared, so both builds behave the same.

@@ -1,0 +1,60 @@
+# Debian package definition for nfpm (https://nfpm.goreleaser.com). Built by `make deb`,
+# which sets VERSION and expects the Linux binary in bin/.
+name: agendling
+arch: amd64
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: utils
+priority: optional
+maintainer: Georgiy Garnov <georgy.garnov@gmail.com>
+description: |-
+  Lightweight desktop calendar with CalDAV sync and reminders
+  Agendling keeps local and CalDAV calendars (several accounts) in sync, shows
+  Day, Week, 2-week and Month views and raises always-on-top reminder popups
+  with sound, snooze and dismiss. It lives in the system tray and uses almost
+  no CPU while idle.
+vendor: Georgiy Garnov
+homepage: https://github.com/Georgy-Garnov/agendling
+license: MIT
+
+depends:
+  # t64 names are the 64-bit time_t transition packages (Debian 13, Ubuntu 24.04+).
+  - libc6 (>= 2.34)
+  - libgtk-3-0 | libgtk-3-0t64
+  - libasound2 | libasound2t64
+recommends:
+  - libnotify-bin
+  - xdg-utils
+suggests:
+  - gnome-shell-extension-appindicator
+
+contents:
+  - src: bin/agendling-linux-amd64
+    dst: /usr/bin/agendling
+    file_info:
+      mode: 0755
+  - src: packaging/agendling.desktop
+    dst: /usr/share/applications/agendling.desktop
+    file_info:
+      mode: 0644
+  - src: docs/logo.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/agendling.svg
+    file_info:
+      mode: 0644
+  - src: docs/logo.png
+    dst: /usr/share/icons/hicolor/256x256/apps/agendling.png
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/doc/agendling/copyright
+    file_info:
+      mode: 0644
+  - src: THIRD_PARTY_NOTICES.md
+    dst: /usr/share/doc/agendling/THIRD_PARTY_NOTICES.md
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: packaging/postinst.sh
+  postremove: packaging/postinst.sh

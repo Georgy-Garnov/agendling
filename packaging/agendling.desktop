@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Agendling
+GenericName=Calendar
+Comment=Desktop calendar with CalDAV sync and reminders
+Exec=agendling
+Icon=agendling
+Terminal=false
+Categories=Office;Calendar;GTK;
+Keywords=calendar;caldav;reminder;agenda;
+StartupNotify=true

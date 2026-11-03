@@ -36,6 +36,8 @@ jobs:
         run: make test
       - name: Build
         run: make build VERSION=${GITHUB_REF_NAME}
+      - name: Build Debian package
+        run: make deb VERSION=${GITHUB_REF_NAME}
       - name: Upload Windows binary (unsigned)
         id: upload-windows
         uses: actions/upload-artifact@v4
@@ -48,6 +50,12 @@ jobs:
         with:
           name: linux
           path: bin/agendling-linux-amd64
+          if-no-files-found: error
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: dist/*.deb
           if-no-files-found: error
 
   sign:
@@ -100,6 +108,7 @@ jobs:
           for d in pkg/windows pkg/linux; do cp LICENSE THIRD_PARTY_NOTICES.md README.md "$d/"; done
           (cd pkg/windows && zip -q "../../dist/agendling-${GITHUB_REF_NAME}-windows-amd64.zip" *)
           (cd pkg/linux && tar czf "../../dist/agendling-${GITHUB_REF_NAME}-linux-amd64.tar.gz" *)
+          cp artifacts/deb/*.deb dist/
           (cd dist && sha256sum * > SHA256SUMS.txt)
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
