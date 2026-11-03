@@ -10,6 +10,7 @@ All notable changes to this project are documented here. The format follows
 - Debian package (`agendling_<version>_amd64.deb`) for Debian, Ubuntu and derivatives, with an
   applications-menu entry and icon (#2). Built with `make deb`.
 - Release and CI builds fail if the Linux binary would need a glibc newer than Ubuntu 22.04's.
+- [iCloud setup guide](docs/icloud.md): creating an app-specific password and adding the account.
 
 ## [0.2.1] - 2026-11-03
 

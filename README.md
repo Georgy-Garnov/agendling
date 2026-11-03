@@ -121,7 +121,7 @@ Agendling starts with an empty local calendar called **Personal**. To see your e
 
 1. Open **Settings → Calendars → Add CalDAV account…**
 2. Enter a name, the server URL, your username and an **app password** (see the
-   [provider table](#caldav-providers)).
+   [provider table](#caldav-providers); for iCloud follow the [iCloud setup guide](docs/icloud.md)).
 3. Click **Test connection**. It should say how many calendars it found.
 4. Choose a colour and a sync interval, then click **OK**. The first sync starts immediately.
 
@@ -194,7 +194,7 @@ Agendling uses standard CalDAV (RFC 4791) with basic authentication. Most provid
 |---|---|---|
 | Nextcloud | `https://your.host/remote.php/dav` | App password: *Settings → Security → Devices & sessions* |
 | Fastmail | `https://caldav.fastmail.com/dav/` | App password with CalDAV access |
-| iCloud | `https://caldav.icloud.com` | App-specific password from appleid.apple.com |
+| iCloud | `https://caldav.icloud.com` | App-specific password from account.apple.com; see the [iCloud setup guide](docs/icloud.md) |
 | Radicale | `https://your.host:5232/` | Your Radicale password |
 | Baïkal | `https://your.host/dav.php` | Your Baïkal password |
 | Other servers | The server's CalDAV root, or the URL of a single calendar | Usually an app password |
