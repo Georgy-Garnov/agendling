@@ -85,8 +85,13 @@ func observance(kind, name string, from, to int, start time.Time, rule string) *
 	dt := ical.NewProp(ical.PropDateTimeStart)
 	dt.Value = start.Format(datetimeFormat) // local time without TZID, as RFC 5545 requires
 	c.Props.Set(dt)
-	c.Props.SetText(ical.PropTimezoneOffsetFrom, formatOffset(from))
-	c.Props.SetText(ical.PropTimezoneOffsetTo, formatOffset(to))
+	// These properties default to UTC-OFFSET. A TEXT parameter breaks vobject parsing.
+	fromProp := ical.NewProp(ical.PropTimezoneOffsetFrom)
+	fromProp.Value = formatOffset(from)
+	c.Props.Set(fromProp)
+	toProp := ical.NewProp(ical.PropTimezoneOffsetTo)
+	toProp.Value = formatOffset(to)
+	c.Props.Set(toProp)
 	if name != "" {
 		c.Props.SetText(ical.PropTimezoneName, name)
 	}

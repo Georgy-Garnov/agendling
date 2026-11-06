@@ -108,7 +108,14 @@ func TestZonedRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, want := range []string{"BEGIN:VTIMEZONE", "TZID:Europe/Berlin", "DTSTART;TZID=Europe/Berlin:20260112T100000", "EXDATE;TZID=Europe/Berlin:20260119T100000"} {
+	for _, want := range []string{
+		"BEGIN:VTIMEZONE",
+		"TZID:Europe/Berlin",
+		"DTSTART;TZID=Europe/Berlin:20260112T100000",
+		"EXDATE;TZID=Europe/Berlin:20260119T100000",
+		"TZOFFSETFROM:+0100\r\n",
+		"TZOFFSETTO:+0200\r\n",
+	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("missing %q in:\n%s", want, out)
 		}
