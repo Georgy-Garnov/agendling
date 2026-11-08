@@ -247,6 +247,7 @@ Agendling uses standard CalDAV (RFC 4791) with basic authentication. Most provid
 | iCloud | `https://caldav.icloud.com` | App-specific password from account.apple.com; see the [iCloud setup guide](docs/icloud.md) |
 | Radicale | `https://your.host:5232/` | Your Radicale password |
 | Baïkal | `https://your.host/dav.php` | Your Baïkal password |
+| Synology Calendar | The CalDAV URL shown in Synology Calendar, e.g. `https://your.nas:5001/caldav/` | Your DSM password, or an app password with 2-step verification |
 | Other servers | The server's CalDAV root, or the URL of a single calendar | Usually an app password |
 
 - **A root URL** makes Agendling discover all event calendars of the account; each appears in the

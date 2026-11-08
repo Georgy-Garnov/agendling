@@ -31,6 +31,8 @@ All notable changes to this project are documented here. The format follows
   in Settings still plays the whole file.
 
 ### Fixed
+- **Synology CalDAV**: discovery kept failing because the trailing slash of the configured URL
+  was dropped when looking up the user's principal (#5, thanks [@ciesinsk](https://github.com/ciesinsk)).
 - Windows: resizing the window left trails of the status bar's size grip; the status bar is now
   drawn by the app, like the rest of the window.
 - An event whose title, description or location contains a carriage return (as some servers send
