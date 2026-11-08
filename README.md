@@ -12,6 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/Georgy-Garnov/agendling/actions/workflows/ci.yml"><img src="https://github.com/Georgy-Garnov/agendling/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Georgy-Garnov/agendling/actions/workflows/vulncheck.yml"><img src="https://github.com/Georgy-Garnov/agendling/actions/workflows/vulncheck.yml/badge.svg" alt="govulncheck"></a>
   <a href="https://github.com/Georgy-Garnov/agendling/releases"><img src="https://img.shields.io/github/v/release/Georgy-Garnov/agendling?include_prereleases" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/go-1.26%2B-00ADD8.svg" alt="Go 1.26+">

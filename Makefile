@@ -14,7 +14,7 @@ MAXGLIBC := 2.35
 WINBIN   := bin/$(APP).exe
 LINUXBIN := bin/$(APP)-linux-amd64
 
-.PHONY: help build windows linux deb glibc-check winres uishots demo test vet notices clean
+.PHONY: help build windows linux deb glibc-check winres uishots demo test vet vulncheck notices clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -58,6 +58,15 @@ test: ## Run unit and integration tests
 vet: ## Vet both platforms
 	GOOS=windows go vet ./...
 	go vet ./...
+
+GOVULNCHECK_VERSION ?= v1.9.0
+
+# Scans both builds for known vulnerabilities that the code can reach, including the standard
+# library of the Go toolchain in go.mod (the scanner is installed into ./bin/tools).
+vulncheck: ## Check both platforms for known vulnerabilities (govulncheck)
+	GOBIN=$(CURDIR)/bin/tools go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	GOOS=windows ./bin/tools/govulncheck ./...
+	./bin/tools/govulncheck ./...
 
 notices: ## Regenerate THIRD_PARTY_NOTICES.md
 	go run ./tools/notices > THIRD_PARTY_NOTICES.md

@@ -2,6 +2,8 @@ module github.com/Georgy-Garnov/agendling
 
 go 1.26.0
 
+toolchain go1.26.10
+
 require (
 	fyne.io/systray v1.12.2
 	github.com/ebitengine/oto/v3 v3.5.1

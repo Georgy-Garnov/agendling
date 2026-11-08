@@ -38,6 +38,11 @@ All notable changes to this project are documented here. The format follows
 - Event titles with line breaks (common in synced invitations) are shown on one line in the
   calendar grid instead of being clipped (#7, thanks [@ciesinsk](https://github.com/ciesinsk)).
 
+### Security
+- Built with Go 1.26.10: the standard library of Go 1.26.0, used for v0.4.0, has known
+  vulnerabilities reachable from the app (TLS, HTTP, X.509 among them). Every push, pull request
+  and a weekly run now check the code with `govulncheck` (`make vulncheck`).
+
 ## [0.4.0] - 2026-11-08
 
 ### Added
