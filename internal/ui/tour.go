@@ -5,9 +5,9 @@ package ui
 import (
 	"fmt"
 	"image"
-	"image/color"
 	"image/draw"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -35,12 +35,20 @@ func RunTour(store *storage.Store, dir string) error {
 			failed = err
 		}
 	}
+	ui := func(f func()) {
+		done := make(chan struct{})
+		a.mw.Synchronize(func() { f(); close(done) })
+		<-done
+		time.Sleep(700 * time.Millisecond)
+	}
+	// grab and shot run on the tour goroutine, not in ui: the waits must leave the UI thread
+	// free to finish layout and painting before the capture.
 	grab := func(hwnd win.HWND) (*image.RGBA, win.RECT) {
-		// Some controls finish painting a little after the window; give them time.
-		win.RedrawWindow(hwnd, nil, 0, win.RDW_INVALIDATE|win.RDW_UPDATENOW|win.RDW_ALLCHILDREN|win.RDW_FRAME)
-		time.Sleep(600 * time.Millisecond)
-		win.RedrawWindow(hwnd, nil, 0, win.RDW_INVALIDATE|win.RDW_UPDATENOW|win.RDW_ALLCHILDREN|win.RDW_FRAME)
-		time.Sleep(300 * time.Millisecond)
+		redraw := func() {
+			win.RedrawWindow(hwnd, nil, 0, win.RDW_INVALIDATE|win.RDW_UPDATENOW|win.RDW_ALLCHILDREN|win.RDW_FRAME)
+		}
+		ui(redraw)
+		ui(redraw)
 		img, rc, err := captureImage(hwnd)
 		fail(err)
 		return img, rc
@@ -51,11 +59,14 @@ func RunTour(store *storage.Store, dir string) error {
 			fail(savePNG(img, filepath.Join(dir, name+".png")))
 		}
 	}
-	ui := func(f func()) {
-		done := make(chan struct{})
-		a.mw.Synchronize(func() { f(); close(done) })
-		<-done
-		time.Sleep(700 * time.Millisecond)
+	popups := func() []*alertWindow {
+		var ws []*alertWindow
+		ui(func() {
+			for w := range a.alerts {
+				ws = append(ws, w)
+			}
+		})
+		return ws
 	}
 	find := func(title string) *model.Event {
 		evs, _ := store.EventsInRange(time.Now().AddDate(0, 0, -14), time.Now().AddDate(0, 0, 14))
@@ -75,13 +86,6 @@ func RunTour(store *storage.Store, dir string) error {
 		}
 		return core.Calendar{}
 	}
-	alertWindows := func() []*alertWindow {
-		var res []*alertWindow
-		for w := range a.alerts {
-			res = append(res, w)
-		}
-		return res
-	}
 	settings := make(chan *settingsUI, 1)
 	settingsHook = func(s *settingsUI) { settings <- s }
 	dialogs := make(chan *walk.Dialog, 1)
@@ -99,29 +103,31 @@ func RunTour(store *storage.Store, dir string) error {
 			}
 		})
 		ui(func() { a.view.SetMode(ViewWeek) })
-		ui(func() { shot(a.mw.Handle(), "week") })
+		shot(a.mw.Handle(), "week")
 		ui(func() { a.view.SetMode(ViewMonth) })
 		time.Sleep(time.Second) // the month grid repaints after the reload
-		ui(func() { shot(a.mw.Handle(), "month") })
+		shot(a.mw.Handle(), "month")
 		ui(func() { a.view.SetMode(ViewWeek) })
 
 		// The calendar dropdown over the window, with one calendar hidden.
 		ui(func() { a.svc.SetCalendarShown(calendar("Sport").Key, false) })
 		ui(a.toggleCalPicker)
+		var pick win.HWND
 		ui(func() {
-			main, mrc := grab(a.mw.Handle())
-			if a.picker == nil || main == nil {
-				fail(fmt.Errorf("calendar dropdown did not open"))
-				return
+			if a.picker != nil {
+				pick = a.picker.dlg.Handle()
 			}
-			pop, prc := grab(a.picker.dlg.Handle())
-			shot(a.picker.dlg.Handle(), "calendars-popup")
-			if pop != nil {
+		})
+		if pick == 0 {
+			fail(fmt.Errorf("calendar dropdown did not open"))
+		} else if main, mrc := grab(a.mw.Handle()); main != nil {
+			if pop, prc := grab(pick); pop != nil {
+				fail(savePNG(pop, filepath.Join(dir, "calendars-popup.png")))
 				overlay(main, pop, int(prc.Left-mrc.Left), int(prc.Top-mrc.Top))
 				fail(savePNG(main, filepath.Join(dir, "calendars.png")))
 			}
-		})
-		ui(func() { shot(a.mw.Handle(), "main-filtered") })
+		}
+		shot(a.mw.Handle(), "main-filtered")
 		ui(func() {
 			if a.picker != nil {
 				a.picker.close()
@@ -146,20 +152,16 @@ func RunTour(store *storage.Store, dir string) error {
 		ui(func() {
 			a.showAlert(scheduler.Alert{Event: sync, Calendar: work, Start: sync.StartTime, End: sync.EndTime, OffsetMin: 1})
 		})
-		ui(func() {
-			for _, w := range alertWindows() {
-				shot(w.mw.Handle(), "reminder")
-				w.close()
-			}
-		})
+		for _, w := range popups() {
+			shot(w.mw.Handle(), "reminder")
+			ui(w.close)
+		}
 		if planning := find("Quarterly planning"); planning != nil && work != nil {
 			ui(func() { a.showNewEvents(work.ID, []*model.Event{planning}) })
-			ui(func() {
-				for _, w := range alertWindows() {
-					shot(w.mw.Handle(), "new-event")
-					w.close()
-				}
-			})
+			for _, w := range popups() {
+				shot(w.mw.Handle(), "new-event")
+				ui(w.close)
+			}
 		}
 
 		// Event editor on an existing event.
@@ -167,7 +169,7 @@ func RunTour(store *storage.Store, dir string) error {
 			a.mw.Synchronize(func() { a.editEvent(review, review.StartTime) })
 			d := <-dialogs
 			time.Sleep(900 * time.Millisecond)
-			ui(func() { shot(d.Handle(), "editor") })
+			shot(d.Handle(), "editor")
 			ui(func() { d.Cancel() })
 		}
 
@@ -177,17 +179,17 @@ func RunTour(store *storage.Store, dir string) error {
 		time.Sleep(700 * time.Millisecond)
 		for _, key := range []string{"calendars", "reminders", "sound", "alerts", "startup", "about"} {
 			ui(func() { s.selectPage(key) })
-			ui(func() { shot(s.dlg.Handle(), "settings-"+key) })
+			shot(s.dlg.Handle(), "settings-"+key)
 		}
 		ui(func() { s.search.SetText("snooze") })
-		ui(func() { shot(s.dlg.Handle(), "settings-search") })
+		shot(s.dlg.Handle(), "settings-search")
 		ui(func() { s.search.SetText("") })
 		ui(func() { s.selectPage("calendars") })
 		if cloud != nil {
 			s.dlg.Synchronize(func() { s.editSource(cloud) })
 			d := <-dialogs
 			time.Sleep(900 * time.Millisecond)
-			ui(func() { shot(d.Handle(), "account") })
+			shot(d.Handle(), "account")
 			ui(func() { d.Cancel() })
 		}
 		ui(func() { s.dlg.Cancel() })
@@ -205,8 +207,8 @@ func RunTour(store *storage.Store, dir string) error {
 			if a.mw.IsDisposed() || !a.mw.Visible() {
 				fail(fmt.Errorf("the main window is gone after OK in Settings"))
 			}
-			shot(a.mw.Handle(), "after-settings-ok")
 		})
+		shot(a.mw.Handle(), "after-settings-ok")
 		ui(a.exit)
 	}()
 	if err := a.Run(false); err != nil {
@@ -215,19 +217,9 @@ func RunTour(store *storage.Store, dir string) error {
 	return failed
 }
 
-// overlay draws src onto dst at (x, y) with a hairline frame, like the dropdown on screen.
+// overlay draws src onto dst at (x, y), keeping src's transparent corners.
 func overlay(dst, src *image.RGBA, x, y int) {
-	r := src.Bounds().Add(image.Pt(x, y))
-	draw.Draw(dst, r, src, image.Point{}, draw.Src)
-	frame := color.RGBA{0xc8, 0xcc, 0xd2, 0xff}
-	for i := r.Min.X - 1; i <= r.Max.X; i++ {
-		dst.Set(i, r.Min.Y-1, frame)
-		dst.Set(i, r.Max.Y, frame)
-	}
-	for j := r.Min.Y - 1; j <= r.Max.Y; j++ {
-		dst.Set(r.Min.X-1, j, frame)
-		dst.Set(r.Max.X, j, frame)
-	}
+	draw.Draw(dst, src.Bounds().Add(image.Pt(x, y)), src, image.Point{}, draw.Over)
 }
 
 func savePNG(img image.Image, path string) error {
@@ -239,10 +231,86 @@ func savePNG(img image.Image, path string) error {
 	return png.Encode(f, img)
 }
 
-var tourUser32 = syscall.NewLazyDLL("user32.dll")
+var (
+	tourUser32 = syscall.NewLazyDLL("user32.dll")
+	tourDwmapi = syscall.NewLazyDLL("dwmapi.dll")
+)
 
-// captureImage grabs a window, including parts covered by others.
+// captureImage grabs a window, including parts covered by others, as it looks on screen: cropped
+// to the visible frame (without the invisible resize borders) with transparent rounded corners
+// and a hairline border, like Windows 11 draws it. The rectangle is the visible frame on screen.
 func captureImage(hwnd win.HWND) (*image.RGBA, win.RECT, error) {
+	img, rc, err := captureWindow(hwnd)
+	if err != nil {
+		return nil, rc, err
+	}
+	frame := rc
+	const dwmwaExtendedFrameBounds = 9
+	if hr, _, _ := tourDwmapi.NewProc("DwmGetWindowAttribute").Call(uintptr(hwnd), dwmwaExtendedFrameBounds,
+		uintptr(unsafe.Pointer(&frame)), unsafe.Sizeof(frame)); hr != 0 {
+		frame = rc
+	}
+	crop := image.Rect(int(frame.Left-rc.Left), int(frame.Top-rc.Top), int(frame.Right-rc.Left), int(frame.Bottom-rc.Top)).Intersect(img.Bounds())
+	out := image.NewRGBA(image.Rect(0, 0, crop.Dx(), crop.Dy()))
+	draw.Draw(out, out.Bounds(), img, crop.Min, draw.Src)
+	dpi := 96
+	if d, _, _ := tourUser32.NewProc("GetDpiForWindow").Call(uintptr(hwnd)); d != 0 {
+		dpi = int(d)
+	}
+	roundCorners(out, 8*float64(dpi)/96)
+	return out, frame, nil
+}
+
+// roundCorners clips img to a rounded rectangle with radius r (antialiased) and draws a hairline
+// border along the edge. Pixels on the outermost row and column that the window did not paint
+// (black: the system draws its border there) take the colour of their inner neighbour first.
+func roundCorners(img *image.RGBA, r float64) {
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	at := func(x, y int) []uint8 { i := img.PixOffset(x, y); return img.Pix[i : i+4 : i+4] }
+	black := func(p []uint8) bool { return p[0] == 0 && p[1] == 0 && p[2] == 0 }
+	for x := 0; x < w && h > 1; x++ {
+		for _, y := range [][2]int{{0, 1}, {h - 1, h - 2}} {
+			if p := at(x, y[0]); black(p) {
+				copy(p, at(x, y[1]))
+			}
+		}
+	}
+	for y := 0; y < h && w > 1; y++ {
+		for _, x := range [][2]int{{0, 1}, {w - 1, w - 2}} {
+			if p := at(x[0], y); black(p) {
+				copy(p, at(x[1], y))
+			}
+		}
+	}
+	border := [3]float64{0x75, 0x7a, 0x82}
+	const borderAlpha = 0.45
+	hw, hh := float64(w)/2, float64(h)/2
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			// Signed distance from the pixel centre to the rounded rectangle, negative inside.
+			qx := math.Abs(float64(x)+0.5-hw) - (hw - r)
+			qy := math.Abs(float64(y)+0.5-hh) - (hh - r)
+			d := math.Hypot(math.Max(qx, 0), math.Max(qy, 0)) + math.Min(math.Max(qx, qy), 0) - r
+			if d < -1.5 {
+				continue
+			}
+			p := at(x, y)
+			if edge := math.Min(math.Max(d+1.5, 0), 1) * borderAlpha; edge > 0 {
+				for c := 0; c < 3; c++ {
+					p[c] = uint8(float64(p[c])*(1-edge) + border[c]*edge + 0.5)
+				}
+			}
+			cover := math.Min(math.Max(0.5-d, 0), 1)
+			for c := 0; c < 4; c++ { // premultiplied alpha
+				p[c] = uint8(float64(p[c])*cover + 0.5)
+			}
+		}
+	}
+}
+
+// captureWindow renders the whole window rectangle with PrintWindow.
+func captureWindow(hwnd win.HWND) (*image.RGBA, win.RECT, error) {
 	var rc win.RECT
 	win.GetWindowRect(hwnd, &rc)
 	w, h := int32(rc.Right-rc.Left), int32(rc.Bottom-rc.Top)
