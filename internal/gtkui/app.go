@@ -28,13 +28,14 @@ type App struct {
 	svc   *core.Service
 	store *storage.Store
 
-	win      *gtk.Window
-	view     *calView
-	cals     *calPicker
-	title    *gtk.Label
-	status   *gtk.Label
-	viewBtns [4]*gtk.ToggleButton
-	syncing  bool // suppresses toggled handlers while updating view buttons
+	win                        *gtk.Window
+	view                       *calView
+	cals                       *calPicker
+	title                      *gtk.Label
+	status                     *gtk.Label
+	zoomOut, zoomLevel, zoomIn *gtk.Button
+	viewBtns                   [4]*gtk.ToggleButton
+	syncing                    bool // suppresses toggled handlers while updating view buttons
 
 	trayEnd func()
 	hasTray bool
@@ -176,52 +177,18 @@ func (a *App) buildMainWindow() error {
 	hb.PackEnd(a.cals.button)
 
 	box, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
-	zoomBar, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 0)
-	zoomBar.SetHAlign(gtk.ALIGN_END)
-	zoomBar.SetMarginEnd(8)
-	zoomBar.SetMarginTop(4)
-	zoomBar.SetMarginBottom(4)
-	zoomCtx, _ := zoomBar.GetStyleContext()
-	zoomCtx.AddClass("linked")
-	var zoomOut, zoomReset, zoomIn *gtk.Button
-	updateZoom := func() {
-		zoomReset.SetLabel(fmt.Sprintf("%d%%", a.view.zoom))
-		zoomOut.SetSensitive(a.view.zoom > core.CalendarZoomMin)
-		zoomIn.SetSensitive(a.view.zoom < core.CalendarZoomMax)
-	}
-	changeZoom := func(percent int) {
-		percent = core.CalendarZoom(percent)
-		if percent == a.view.zoom {
-			return
-		}
-		if err := a.svc.SaveCalendarZoom(percent); err != nil {
-			a.setStatus("Failed to save calendar zoom: " + err.Error())
-			return
-		}
-		a.view.setZoom(percent)
-		updateZoom()
-	}
-	zoomOut = button("−", func() { changeZoom(a.view.zoom - core.CalendarZoomStep) })
-	zoomOut.SetTooltipText("Zoom out")
-	zoomReset = button("", func() { changeZoom(core.CalendarZoomDefault) })
-	zoomReset.SetTooltipText("Reset calendar zoom")
-	zoomIn = button("+", func() { changeZoom(a.view.zoom + core.CalendarZoomStep) })
-	zoomIn.SetTooltipText("Zoom in")
-	zoomBar.Add(zoomOut)
-	zoomBar.Add(zoomReset)
-	zoomBar.Add(zoomIn)
-	updateZoom()
-	box.PackStart(zoomBar, false, false, 0)
 	box.PackStart(a.view.build(), true, true, 0)
 	a.cals.refresh()
+
+	// Status bar: the sync status, and the zoom of the calendar.
+	statusBar, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
+	addClass(statusBar, "status-bar")
 	a.status, _ = gtk.LabelNew("Ready")
 	a.status.SetXAlign(0)
-	a.status.SetMarginStart(8)
-	a.status.SetMarginTop(3)
-	a.status.SetMarginBottom(3)
-	statusCtx, _ := a.status.GetStyleContext()
-	statusCtx.AddClass("dim-label")
-	box.PackEnd(a.status, false, false, 0)
+	addClass(a.status, "dim-label")
+	statusBar.PackStart(a.status, true, true, 0)
+	statusBar.PackEnd(a.zoomControl(), false, false, 0)
+	box.PackEnd(statusBar, false, false, 0)
 	win.Add(box)
 
 	// Closing the window hides it to the tray instead of exiting. Without a tray
@@ -341,6 +308,46 @@ func (a *App) toggleMute() {
 	} else {
 		a.setStatus("Notification sounds on")
 	}
+}
+
+// zoomControl is "−  100%  +": zoom out, the level (a click resets it to 100%), zoom in.
+func (a *App) zoomControl() *gtk.Box {
+	z, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 0)
+	addClass(z, "zoom-control")
+	flat := func(label string, onClick func()) *gtk.Button {
+		b := button(label, onClick)
+		b.SetRelief(gtk.RELIEF_NONE)
+		b.SetFocusOnClick(false)
+		return b
+	}
+	a.zoomOut = flat("−", func() { a.setZoom(core.NextZoom(a.view.zoom, -1), -1) })
+	a.zoomLevel = flat("", func() { a.setZoom(core.CalendarZoomDefault, -1) })
+	a.zoomIn = flat("+", func() { a.setZoom(core.NextZoom(a.view.zoom, 1), -1) })
+	z.SetTooltipText("Calendar zoom: Ctrl+mouse wheel, Ctrl+Plus, Ctrl+Minus; Ctrl+0 or a click on the percentage resets it")
+	for _, b := range []*gtk.Button{a.zoomOut, a.zoomLevel, a.zoomIn} {
+		z.PackStart(b, false, false, 0)
+	}
+	a.updateZoomControl()
+	return z
+}
+
+func (a *App) updateZoomControl() {
+	a.zoomLevel.SetLabel(fmt.Sprintf("%d%%", a.view.zoom))
+	a.zoomOut.SetSensitive(a.view.zoom > core.CalendarZoomMin)
+	a.zoomIn.SetSensitive(a.view.zoom < core.CalendarZoomMax)
+}
+
+// setZoom zooms the calendar, keeping what is at y (-1: the middle) in place, and saves the level.
+func (a *App) setZoom(percent int, y float64) {
+	percent = core.CalendarZoom(percent)
+	if percent == a.view.zoom {
+		return
+	}
+	if err := a.svc.SaveCalendarZoom(percent); err != nil {
+		a.setStatus("Failed to save calendar zoom: " + err.Error())
+	}
+	a.view.zoomAt(percent, y)
+	a.updateZoomControl()
 }
 
 func (a *App) setStatus(s string) {

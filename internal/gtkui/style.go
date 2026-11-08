@@ -21,6 +21,10 @@ const appCSS = `
 .settings-title { font-size: 20pt; font-weight: 600; color: #1f2328; }
 .settings-caption { color: #5f6670; font-size: 9pt; }
 .settings-section { font-size: 12pt; font-weight: 600; color: #1f2328; }
+.status-bar { background-color: #ffffff; border-top: 1px solid #e3e6ea; padding: 1px 6px 1px 10px; }
+.status-bar label { font-size: 9pt; }
+.zoom-control button { min-height: 0; min-width: 0; padding: 2px 8px; border-radius: 4px; }
+.zoom-control button label { font-size: 9pt; }
 .settings-field { color: #5f6670; }
 .settings-card switch:checked { background-color: #0f6cbd; border-color: #0f6cbd; }
 .event-title { font-size: 14pt; }

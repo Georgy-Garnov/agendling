@@ -21,21 +21,6 @@ const (
 
 var ViewNames = [...]string{ViewDay: "Day", ViewWeek: "Week", View2Week: "2 Weeks", ViewMonth: "Month"}
 
-const (
-	CalendarZoomMin     = 80
-	CalendarZoomDefault = 100
-	CalendarZoomMax     = 160
-	CalendarZoomStep    = 20
-)
-
-// CalendarZoom treats the zero value from older settings as the default.
-func CalendarZoom(percent int) int {
-	if percent == 0 {
-		return CalendarZoomDefault
-	}
-	return max(CalendarZoomMin, min(percent, CalendarZoomMax))
-}
-
 // ViewRange returns the visible [from, to) interval of a view around anchor.
 func ViewRange(mode ViewMode, anchor time.Time) (time.Time, time.Time) {
 	switch mode {

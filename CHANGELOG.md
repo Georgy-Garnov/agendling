@@ -7,7 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- Calendar zoom from 80% to 160% on Windows and Linux, with a reset button and a saved zoom level.
+- **Calendar zoom** from 80% to 160%: **− 100% +** in the status bar, Ctrl + mouse wheel (keeping what
+  is under the mouse in place), Ctrl + Plus / Minus and Ctrl + 0 to reset; the level is kept across
+  restarts (#6, thanks [@ciesinsk](https://github.com/ciesinsk)). Zoomed in, the month and 2-week
+  views scroll instead of squeezing the weeks into the window.
+- **A modern scrollbar** in the calendar: a thin line that widens under the mouse, and the view can
+  be dragged by pressing and holding an empty spot (or with the middle mouse button).
 - **Maximum sound length** in Settings → Sound: how long an alert sound may play, repeated or not
   (3 minutes by default, e.g. 15 seconds, or *No limit* to play until stopped). A long sound file
   played once now stops there too (#8, thanks [@ciesinsk](https://github.com/ciesinsk)).
@@ -21,6 +26,8 @@ All notable changes to this project are documented here. The format follows
   in Settings still plays the whole file.
 
 ### Fixed
+- Windows: resizing the window left trails of the status bar's size grip; the status bar is now
+  drawn by the app, like the rest of the window.
 - An event whose title, description or location contains a carriage return (as some servers send
   it) no longer fails to save or sync: line breaks of any kind are now written correctly.
 - Event titles with line breaks (common in synced invitations) are shown on one line in the

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lxn/walk"
+	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
 
 	"github.com/Georgy-Garnov/agendling/internal/core"
@@ -57,10 +58,13 @@ type CalView struct {
 	app *App
 	cw  *walk.CustomWidget
 
-	mode    viewMode
-	anchor  time.Time
-	zoom    int
-	scrollY int // time-grid scroll offset in pixels
+	mode       viewMode
+	anchor     time.Time
+	zoom       int // percent
+	scrollY    int // time-grid scroll offset in pixels
+	cellScroll int // month/2-week grid scroll offset in pixels, when zoomed in
+	sb         calScrollbar
+	pan        calPan
 
 	occs []model.Occurrence
 	cals map[int64]*model.CalendarSource
@@ -71,7 +75,8 @@ type CalView struct {
 	lastClickAt  time.Time
 	lastClickPos walk.Point
 
-	font, bold, small *walk.Font
+	font, bold, small calFont
+	fonts             map[calFontKey]win.HFONT
 	brushes           map[walk.Color]*walk.SolidColorBrush
 	pens              map[walk.Color]*walk.CosmeticPen
 	scrolledOnce      bool
@@ -89,32 +94,15 @@ type gridGeom struct {
 	cellH    float64
 	headerH  int
 	numWeeks int
+	scroll   int
 }
 
 func newCalView(app *App) *CalView {
-	v := &CalView{app: app, mode: ViewWeek, anchor: time.Now(),
+	return &CalView{app: app, mode: ViewWeek, anchor: time.Now(),
+		zoom: core.CalendarZoom(app.store.Settings().CalendarZoomPercent),
+		font: calFont{9, false}, bold: calFont{9, true}, small: calFont{8, false},
+		fonts:   map[calFontKey]win.HFONT{},
 		brushes: map[walk.Color]*walk.SolidColorBrush{}, pens: map[walk.Color]*walk.CosmeticPen{}}
-	v.setZoom(core.CalendarZoom(app.store.Settings().CalendarZoomPercent))
-	return v
-}
-
-func (v *CalView) setZoom(percent int) {
-	if v.zoom > 0 {
-		// Preserve the visible time when the height of an hour changes.
-		v.scrollY = int(math.Round(float64(v.scrollY) * float64(percent) / float64(v.zoom)))
-	}
-	v.zoom = percent
-	pointSize := func(base int) int {
-		return int(math.Round(float64(base*percent) / 100))
-	}
-	v.font, _ = walk.NewFont("Segoe UI", pointSize(9), 0)
-	v.bold, _ = walk.NewFont("Segoe UI", pointSize(9), walk.FontBold)
-	v.small, _ = walk.NewFont("Segoe UI", pointSize(8), 0)
-	v.grid.valid = false
-	v.hits = v.hits[:0]
-	if v.cw != nil {
-		v.cw.Invalidate()
-	}
 }
 
 func (v *CalView) attach(cw *walk.CustomWidget) {
@@ -122,6 +110,8 @@ func (v *CalView) attach(cw *walk.CustomWidget) {
 	cw.SetPaintMode(walk.PaintBuffered)
 	cw.SetInvalidatesOnResize(true)
 	cw.MouseDown().Attach(v.onMouseDown)
+	cw.MouseMove().Attach(v.onMouseMove)
+	cw.MouseUp().Attach(v.onMouseUp)
 	cw.MouseWheel().Attach(v.onWheel)
 	cw.KeyDown().Attach(v.onKey)
 }
@@ -192,13 +182,6 @@ func (v *CalView) pen(c walk.Color) walk.Pen {
 	return p
 }
 
-func (v *CalView) text(c *walk.Canvas, s string, f *walk.Font, col walk.Color, r walk.Rectangle, extra walk.DrawTextFormat) {
-	if r.Width <= 0 || r.Height <= 0 {
-		return
-	}
-	c.DrawTextPixels(s, f, col, r, walk.TextLeft|walk.TextNoPrefix|walk.TextEndEllipsis|extra)
-}
-
 func (v *CalView) hline(c *walk.Canvas, col walk.Color, x1, x2, y int) {
 	c.DrawLinePixels(v.pen(col), walk.Point{X: x1, Y: y}, walk.Point{X: x2, Y: y})
 }
@@ -231,6 +214,7 @@ func (v *CalView) render(c *walk.Canvas, b walk.Rectangle) error {
 	default:
 		v.paintCells(c, b, px, from, 6)
 	}
+	v.paintScrollbar(c)
 	return nil
 }
 
@@ -247,15 +231,11 @@ func (v *CalView) paintTimeGrid(c *walk.Canvas, b walk.Rectangle, px func(int) i
 	top := headerH + allDayH
 
 	// Time grid (painted first; header and all-day strip are painted over it).
-	maxScroll := int(24*hourH) - (b.Height - top)
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
 	if !v.scrolledOnce {
 		v.scrollY = int(7.5 * hourH)
 		v.scrolledOnce = true
 	}
-	v.scrollY = max(0, min(v.scrollY, maxScroll))
+	v.setScrollArea(b, top, int(24*hourH))
 	yAt := func(t time.Time, day time.Time) int {
 		h := t.Sub(day).Hours()
 		return top + int(h*hourH) - v.scrollY
@@ -335,7 +315,7 @@ func (v *CalView) paintTimeGrid(c *walk.Canvas, b walk.Rectangle, px func(int) i
 		if days == 1 {
 			label = d.Format("Monday, 2 January")
 		}
-		c.DrawTextPixels(label, f, col, r, walk.TextCenter|walk.TextVCenter|walk.TextSingleLine|walk.TextNoPrefix)
+		v.text(c, label, f, col, r, walk.TextCenter|walk.TextVCenter|walk.TextSingleLine)
 		v.hits = append(v.hits, hit{kind: hitDay, r: r, day: d})
 		v.vline(c, colGrid, colX(i), 0, top)
 	}
@@ -386,24 +366,24 @@ func (v *CalView) paintAllDayBar(c *walk.Canvas, px func(int) int, r walk.Rectan
 func (v *CalView) paintCells(c *walk.Canvas, b walk.Rectangle, px func(int) int, from time.Time, weeks int) {
 	headerH := px(24)
 	cellW := float64(b.Width) / 7
-	cellH := float64(b.Height-headerH) / float64(weeks)
+	// The weeks fill the window up to 100%; zoomed in further they grow and scroll.
+	cellH := float64(b.Height-headerH) / float64(weeks) * max(1, float64(v.zoom)/100)
+	v.setScrollArea(b, headerH, int(math.Round(cellH*float64(weeks))))
+	off := v.cellScroll
 	now := time.Now()
 	_, anchorMonth, _ := v.anchor.Date()
 	lineH := px(18)
 
-	for i := 0; i < 7; i++ {
-		d := from.AddDate(0, 0, i)
-		r := walk.Rectangle{X: int(float64(i) * cellW), Y: 0, Width: int(cellW), Height: headerH}
-		c.DrawTextPixels(d.Format("Monday"), v.font, colMuted, r, walk.TextCenter|walk.TextVCenter|walk.TextSingleLine)
-	}
-
 	for w := 0; w < weeks; w++ {
+		if top, bottom := headerH+int(math.Round(float64(w)*cellH))-off, headerH+int(math.Round(float64(w+1)*cellH))-off; bottom < headerH || top > b.Height {
+			continue
+		}
 		for i := 0; i < 7; i++ {
 			d := from.AddDate(0, 0, w*7+i)
 			x0 := int(math.Round(float64(i) * cellW))
 			x1 := int(math.Round(float64(i+1) * cellW))
-			y0 := headerH + int(math.Round(float64(w)*cellH))
-			y1 := headerH + int(math.Round(float64(w+1)*cellH))
+			y0 := headerH + int(math.Round(float64(w)*cellH)) - off
+			y1 := headerH + int(math.Round(float64(w+1)*cellH)) - off
 			cell := walk.Rectangle{X: x0, Y: y0, Width: x1 - x0, Height: y1 - y0}
 			switch {
 			case core.SameDay(d, now):
@@ -462,18 +442,36 @@ func (v *CalView) paintCells(c *walk.Canvas, b walk.Rectangle, px func(int) int,
 			}
 		}
 	}
-	v.hline(c, colGrid, 0, b.Width, b.Height-1)
-	v.grid = gridGeom{valid: true, cells: true, from: from, cellW: cellW, cellH: cellH, headerH: headerH, numWeeks: weeks}
+	// Day names on top of the scrolled weeks.
+	c.FillRectanglePixels(v.brush(colBackground), walk.Rectangle{X: 0, Y: 0, Width: b.Width, Height: headerH})
+	for i := 0; i < 7; i++ {
+		d := from.AddDate(0, 0, i)
+		r := walk.Rectangle{X: int(float64(i) * cellW), Y: 0, Width: int(cellW), Height: headerH}
+		v.text(c, d.Format("Monday"), v.font, colMuted, r, walk.TextCenter|walk.TextVCenter|walk.TextSingleLine)
+	}
+	v.hline(c, colGrid, 0, b.Width, headerH)
+	if !v.sb.s.Scrollable() || v.cellScroll >= int(v.sb.s.Max()) {
+		v.hline(c, colGrid, 0, b.Width, b.Height-1)
+	}
+	v.grid = gridGeom{valid: true, cells: true, from: from, cellW: cellW, cellH: cellH, headerH: headerH, numWeeks: weeks, scroll: off}
 }
 
 // ---------- input ----------
 
 func (v *CalView) onMouseDown(x, y int, button walk.MouseButton) {
 	v.cw.SetFocus()
+	pt := walk.Point{X: x, Y: y}
+	if button == walk.MiddleButton {
+		v.armPan(pt, true)
+		return
+	}
 	if button != walk.LeftButton {
 		return
 	}
-	pt := walk.Point{X: x, Y: y}
+	if v.inZone(pt) {
+		v.onScrollbarDown(pt)
+		return
+	}
 	now := time.Now()
 	dbl := now.Sub(v.lastClickAt) <= doubleClickTime() &&
 		abs(pt.X-v.lastClickPos.X) < 6 && abs(pt.Y-v.lastClickPos.Y) < 6
@@ -501,13 +499,17 @@ func (v *CalView) onMouseDown(x, y int, button walk.MouseButton) {
 		}
 		return
 	}
-	if !dbl || !v.grid.valid {
+	if !dbl {
+		v.armPan(pt, false) // a long press on an empty spot drags the view
+		return
+	}
+	if !v.grid.valid {
 		return
 	}
 	g := v.grid
 	if g.cells {
 		col := int(float64(x) / g.cellW)
-		row := int(float64(y-g.headerH) / g.cellH)
+		row := int(float64(y-g.headerH+g.scroll) / g.cellH)
 		if y < g.headerH || col < 0 || col > 6 || row < 0 || row >= g.numWeeks {
 			return
 		}
@@ -539,9 +541,22 @@ func (v *CalView) onMouseDown(x, y int, button walk.MouseButton) {
 
 func (v *CalView) onWheel(x, y int, button walk.MouseButton) {
 	delta := walk.MouseWheelEventDelta(button)
-	if v.mode == ViewDay || v.mode == ViewWeek {
-		v.scrollY -= int(float64(delta) / 120 * v.grid.hourH)
-		v.cw.Invalidate()
+	pt := win.POINT{X: int32(x), Y: int32(y)} // the wheel reports screen coordinates
+	win.ScreenToClient(v.cw.Handle(), &pt)
+	if walk.MouseWheelEventKeyState(button)&win.MK_CONTROL != 0 {
+		dir := 1
+		if delta < 0 {
+			dir = -1
+		}
+		v.app.setZoom(core.NextZoom(v.zoom, dir), int(pt.Y))
+		return
+	}
+	switch {
+	case v.mode == ViewDay || v.mode == ViewWeek:
+		v.scrollBy(-int(float64(delta) / 120 * v.grid.hourH))
+		return
+	case v.sb.s.Scrollable(): // a zoomed-in month scrolls; the arrows switch months
+		v.scrollBy(-int(float64(delta) / 120 * v.grid.cellH / 2))
 		return
 	}
 	if delta > 0 {
@@ -552,6 +567,21 @@ func (v *CalView) onWheel(x, y int, button walk.MouseButton) {
 }
 
 func (v *CalView) onKey(key walk.Key) {
+	if walk.ModifiersDown()&walk.ModControl != 0 {
+		switch key {
+		case walk.KeyOEMPlus, walk.KeyAdd:
+			v.app.setZoom(core.NextZoom(v.zoom, 1), -1)
+		case walk.KeyOEMMinus, walk.KeySubtract:
+			v.app.setZoom(core.NextZoom(v.zoom, -1), -1)
+		case walk.Key0, walk.KeyNumpad0:
+			v.app.setZoom(core.CalendarZoomDefault, -1)
+		}
+		return
+	}
+	step := int(v.grid.hourH)
+	if v.grid.cells {
+		step = int(v.grid.cellH / 2)
+	}
 	switch key {
 	case walk.KeyLeft, walk.KeyPrior:
 		v.Navigate(-1)
@@ -560,11 +590,9 @@ func (v *CalView) onKey(key walk.Key) {
 	case walk.KeyHome, walk.KeyT:
 		v.GoTo(time.Now(), v.mode)
 	case walk.KeyUp:
-		v.scrollY -= int(v.grid.hourH)
-		v.cw.Invalidate()
+		v.scrollBy(-step)
 	case walk.KeyDown:
-		v.scrollY += int(v.grid.hourH)
-		v.cw.Invalidate()
+		v.scrollBy(step)
 	case walk.KeyD:
 		v.SetMode(ViewDay)
 	case walk.KeyW:

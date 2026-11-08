@@ -44,6 +44,7 @@ type gridGeom struct {
 	days, weeks                   int
 	left, top, allDayTop, headerH float64
 	colW, hourH, cellW, cellH     float64
+	scroll                        float64 // of the cells
 }
 
 // calView draws day/week/2-week/month layouts on a GtkDrawingArea with Cairo.
@@ -51,11 +52,17 @@ type calView struct {
 	app  *App
 	area *gtk.DrawingArea
 
-	mode     core.ViewMode
-	anchor   time.Time
-	zoom     int
-	scrollY  float64
-	scrolled bool
+	mode       core.ViewMode
+	anchor     time.Time
+	zoom       int     // percent
+	scale      float64 // zoom as a factor, for the frame being painted
+	scrollY    float64 // time grid, drawing units
+	cellScroll float64 // month/2-week grid when zoomed in
+	scrolled   bool
+	sb         calScrollbar
+	pan        calPan
+	anchor0    *zoomAnchor
+	zoomAcc    float64 // Ctrl+scroll not yet turned into a zoom step
 
 	occs []model.Occurrence
 	cals map[int64]*model.CalendarSource
@@ -74,18 +81,12 @@ func newCalView(app *App) *calView {
 	}
 }
 
-func (v *calView) setZoom(percent int) {
-	v.zoom = percent
-	v.grid.valid = false
-	v.hits = v.hits[:0]
-	v.area.QueueDraw()
-}
-
 func (v *calView) build() *gtk.DrawingArea {
 	da, _ := gtk.DrawingAreaNew()
 	v.area = da
 	da.SetCanFocus(true)
-	da.AddEvents(int(gdk.BUTTON_PRESS_MASK | gdk.SCROLL_MASK | gdk.SMOOTH_SCROLL_MASK | gdk.KEY_PRESS_MASK))
+	da.AddEvents(int(gdk.BUTTON_PRESS_MASK | gdk.BUTTON_RELEASE_MASK | gdk.POINTER_MOTION_MASK | gdk.LEAVE_NOTIFY_MASK |
+		gdk.SCROLL_MASK | gdk.SMOOTH_SCROLL_MASK | gdk.KEY_PRESS_MASK))
 	da.Connect("draw", func(_ *gtk.DrawingArea, cr *cairo.Context) bool {
 		v.render(cr, float64(da.GetAllocatedWidth()), float64(da.GetAllocatedHeight()))
 		return true
@@ -94,12 +95,25 @@ func (v *calView) build() *gtk.DrawingArea {
 		v.onButton(gdk.EventButtonNewFromEvent(ev))
 		return true
 	})
+	da.Connect("button-release-event", func() bool {
+		v.onRelease()
+		return true
+	})
+	da.Connect("motion-notify-event", func(_ *gtk.DrawingArea, ev *gdk.Event) bool {
+		v.onMotion(gdk.EventMotionNewFromEvent(ev).MotionVal())
+		return true
+	})
+	da.Connect("leave-notify-event", func() bool {
+		v.onLeave()
+		return false
+	})
 	da.Connect("scroll-event", func(_ *gtk.DrawingArea, ev *gdk.Event) bool {
 		v.onScroll(gdk.EventScrollNewFromEvent(ev))
 		return true
 	})
 	da.Connect("key-press-event", func(_ *gtk.DrawingArea, ev *gdk.Event) bool {
-		return v.onKey(gdk.EventKeyNewFromEvent(ev).KeyVal())
+		k := gdk.EventKeyNewFromEvent(ev)
+		return v.onKey(k.KeyVal(), gdk.ModifierType(k.State()))
 	})
 	return da
 }
@@ -214,11 +228,12 @@ func (v *calView) text(cr *cairo.Context, s string, f *pango.FontDescription, c 
 // ---------- rendering ----------
 
 func (v *calView) render(cr *cairo.Context, w, h float64) {
-	scale := float64(v.zoom) / 100
+	v.scale = float64(v.zoom) / 100
 	cr.Save()
+	defer v.paintScrollbar(cr) // in widget pixels, after the zoomed drawing
 	defer cr.Restore()
-	cr.Scale(scale, scale)
-	w, h = w/scale, h/scale
+	cr.Scale(v.scale, v.scale)
+	w, h = w/v.scale, h/v.scale
 	fill(cr, rect{0, 0, w, h}, core.ColBackground)
 	v.hits = v.hits[:0]
 	from, _ := core.ViewRange(v.mode, v.anchor)
@@ -244,11 +259,10 @@ func (v *calView) paintTimeGrid(cr *cairo.Context, w, h float64, from time.Time,
 	allDayH := float64(max(rows, 1))*rowH + 6
 	top := headerH + allDayH
 
-	maxScroll := math.Max(0, 24*hourH-(h-top))
 	if !v.scrolled {
 		v.scrollY, v.scrolled = 7.5*hourH, true
 	}
-	v.scrollY = math.Max(0, math.Min(v.scrollY, maxScroll))
+	v.setScrollArea(top, 24*hourH, w, h)
 	yAt := func(t, day time.Time) float64 { return top + t.Sub(day).Hours()*hourH - v.scrollY }
 
 	for i := 0; i < days; i++ {
@@ -368,19 +382,21 @@ func (v *calView) paintAllDayBar(cr *cairo.Context, r rect, o model.Occurrence) 
 func (v *calView) paintCells(cr *cairo.Context, w, h float64, from time.Time, weeks int) {
 	const headerH, lineH = 24.0, 18.0
 	cellW := w / 7
-	cellH := (h - headerH) / float64(weeks)
+	// The weeks fill the window up to 100%; zoomed in further they grow and scroll.
+	cellH := (h - headerH) / float64(weeks) * math.Max(1, v.scale)
+	v.setScrollArea(headerH, cellH*float64(weeks), w, h)
+	off := v.cellScroll
 	now := time.Now()
 	anchorMonth := v.anchor.Month()
 
-	for i := 0; i < 7; i++ {
-		d := from.AddDate(0, 0, i)
-		v.text(cr, d.Format("Monday"), v.font, core.ColMuted, rect{float64(i) * cellW, 0, cellW, headerH}, single|center|vcenter)
-	}
 	for wk := 0; wk < weeks; wk++ {
+		if headerH+float64(wk+1)*cellH-off < headerH || headerH+float64(wk)*cellH-off > h {
+			continue
+		}
 		for i := 0; i < 7; i++ {
 			d := from.AddDate(0, 0, wk*7+i)
 			x0, x1 := math.Round(float64(i)*cellW), math.Round(float64(i+1)*cellW)
-			y0, y1 := headerH+math.Round(float64(wk)*cellH), headerH+math.Round(float64(wk+1)*cellH)
+			y0, y1 := headerH+math.Round(float64(wk)*cellH-off), headerH+math.Round(float64(wk+1)*cellH-off)
 			cell := rect{x0, y0, x1 - x0, y1 - y0}
 			switch {
 			case core.SameDay(d, now):
@@ -433,24 +449,42 @@ func (v *calView) paintCells(cr *cairo.Context, w, h float64, from time.Time, we
 			}
 		}
 	}
-	hline(cr, core.ColGrid, 0, w, h-1)
-	v.grid = gridGeom{valid: true, cells: true, from: from, weeks: weeks, cellW: cellW, cellH: cellH, headerH: headerH}
+	// Day names on top of the scrolled weeks.
+	fill(cr, rect{0, 0, w, headerH}, core.ColBackground)
+	for i := 0; i < 7; i++ {
+		d := from.AddDate(0, 0, i)
+		v.text(cr, d.Format("Monday"), v.font, core.ColMuted, rect{float64(i) * cellW, 0, cellW, headerH}, single|center|vcenter)
+	}
+	hline(cr, core.ColGrid, 0, w, headerH)
+	if !v.sb.s.Scrollable() || v.cellScroll >= v.sb.s.Max()-0.5 {
+		hline(cr, core.ColGrid, 0, w, h-1)
+	}
+	v.grid = gridGeom{valid: true, cells: true, from: from, weeks: weeks, cellW: cellW, cellH: cellH, headerH: headerH, scroll: off}
 }
 
 // ---------- input ----------
 
 func (v *calView) onButton(ev *gdk.EventButton) {
 	v.area.GrabFocus()
-	if ev.Button() != gdk.BUTTON_PRIMARY {
-		return
-	}
-	// Hit regions and the time grid use the unscaled drawing coordinates.
-	scale := float64(v.zoom) / 100
-	x, y := ev.X()/scale, ev.Y()/scale
 	double := ev.Type() == gdk.EVENT_2BUTTON_PRESS
 	if ev.Type() != gdk.EVENT_BUTTON_PRESS && !double {
 		return
 	}
+	if ev.Button() == gdk.BUTTON_MIDDLE {
+		v.armPan(ev.X(), ev.Y(), true)
+		return
+	}
+	if ev.Button() != gdk.BUTTON_PRIMARY {
+		return
+	}
+	if v.inZone(ev.X(), ev.Y()) {
+		if !double {
+			v.onScrollbarPress(ev.Y())
+		}
+		return
+	}
+	// Hit regions and the time grid use the unscaled drawing coordinates.
+	x, y := ev.X()/v.scale, ev.Y()/v.scale
 	for i := len(v.hits) - 1; i >= 0; i-- {
 		h := v.hits[i]
 		if !h.r.contains(x, y) {
@@ -471,12 +505,16 @@ func (v *calView) onButton(ev *gdk.EventButton) {
 		}
 		return
 	}
-	if !double || !v.grid.valid {
+	if !double {
+		v.armPan(ev.X(), ev.Y(), false) // a long press on an empty spot drags the view
+		return
+	}
+	if !v.grid.valid {
 		return
 	}
 	g := v.grid
 	if g.cells {
-		col, row := int(x/g.cellW), int((y-g.headerH)/g.cellH)
+		col, row := int(x/g.cellW), int((y-g.headerH+g.scroll)/g.cellH)
 		if y < g.headerH || col < 0 || col > 6 || row < 0 || row >= g.weeks {
 			return
 		}
@@ -512,9 +550,24 @@ func (v *calView) onScroll(ev *gdk.EventScroll) {
 	if dir == 0 {
 		return
 	}
-	if v.mode == core.ViewDay || v.mode == core.ViewWeek {
-		v.scrollY += dir * v.grid.hourH
-		v.area.QueueDraw()
+	if ev.State()&gdk.CONTROL_MASK != 0 {
+		// A touchpad sends small smooth deltas: one zoom step per wheel notch's worth.
+		if v.zoomAcc += dir; math.Abs(v.zoomAcc) >= 1 {
+			step := 1
+			if v.zoomAcc > 0 {
+				step = -1
+			}
+			v.zoomAcc = 0
+			v.app.setZoom(core.NextZoom(v.zoom, step), ev.Y())
+		}
+		return
+	}
+	switch {
+	case v.mode == core.ViewDay || v.mode == core.ViewWeek:
+		v.scrollBy(dir * v.grid.hourH)
+		return
+	case v.sb.s.Scrollable(): // a zoomed-in month scrolls; the arrows switch months
+		v.scrollBy(dir * v.grid.cellH / 2)
 		return
 	}
 	if dir < 0 {
@@ -524,7 +577,24 @@ func (v *calView) onScroll(ev *gdk.EventScroll) {
 	}
 }
 
-func (v *calView) onKey(key uint) bool {
+func (v *calView) onKey(key uint, state gdk.ModifierType) bool {
+	if state&gdk.CONTROL_MASK != 0 {
+		switch key {
+		case gdk.KEY_plus, gdk.KEY_equal, gdk.KEY_KP_Add:
+			v.app.setZoom(core.NextZoom(v.zoom, 1), -1)
+		case gdk.KEY_minus, gdk.KEY_KP_Subtract:
+			v.app.setZoom(core.NextZoom(v.zoom, -1), -1)
+		case gdk.KEY_0, gdk.KEY_KP_0:
+			v.app.setZoom(core.CalendarZoomDefault, -1)
+		default:
+			return false
+		}
+		return true
+	}
+	step := v.grid.hourH
+	if v.grid.cells {
+		step = v.grid.cellH / 2
+	}
 	switch key {
 	case gdk.KEY_Left, gdk.KEY_Page_Up:
 		v.navigate(-1)
@@ -533,11 +603,9 @@ func (v *calView) onKey(key uint) bool {
 	case gdk.KEY_Home, gdk.KEY_t:
 		v.goTo(time.Now(), v.mode)
 	case gdk.KEY_Up:
-		v.scrollY -= v.grid.hourH
-		v.area.QueueDraw()
+		v.scrollBy(-step)
 	case gdk.KEY_Down:
-		v.scrollY += v.grid.hourH
-		v.area.QueueDraw()
+		v.scrollBy(step)
 	case gdk.KEY_d:
 		v.setMode(core.ViewDay)
 	case gdk.KEY_w:

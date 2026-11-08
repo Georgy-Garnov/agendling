@@ -36,7 +36,9 @@ type App struct {
 	seg        *segmented
 	calBtn     *flatButton
 	titleLabel *walk.Label
-	status     *walk.StatusBarItem
+	statusBar  *walk.Composite
+	status     *walk.Label
+	zoomCtl    *zoomControl
 	// The Calendars dropdown, while open, and when it last closed.
 	picker       *calPicker
 	pickerClosed time.Time
@@ -72,24 +74,6 @@ func (a *App) Run(startMinimized bool) error {
 	a.svc.EnsureDefaultCalendar()
 
 	var cw *walk.CustomWidget
-	var zoomOut, zoomReset, zoomIn *walk.PushButton
-	updateZoom := func() {
-		zoomReset.SetText(fmt.Sprintf("%d%%", a.view.zoom))
-		zoomOut.SetEnabled(a.view.zoom > core.CalendarZoomMin)
-		zoomIn.SetEnabled(a.view.zoom < core.CalendarZoomMax)
-	}
-	changeZoom := func(percent int) {
-		percent = core.CalendarZoom(percent)
-		if percent == a.view.zoom {
-			return
-		}
-		if err := a.svc.SaveCalendarZoom(percent); err != nil {
-			a.setStatus("Failed to save calendar zoom: " + err.Error())
-			return
-		}
-		a.view.setZoom(percent)
-		updateZoom()
-	}
 	err := MainWindow{
 		AssignTo: &a.mw,
 		Title:    appinfo.Name,
@@ -105,18 +89,6 @@ func (a *App) Run(startMinimized bool) error {
 				Layout:     HBox{Margins: Margins{Left: 14, Top: 10, Right: 14, Bottom: 10}, Spacing: 6},
 			},
 			Composite{Background: SolidColorBrush{Color: flLine}, MinSize: Size{Height: 1}, MaxSize: Size{Height: 1}},
-			Composite{
-				Layout: HBox{Margins: Margins{Left: 8, Right: 8, Bottom: 4}},
-				Children: []Widget{
-					HSpacer{},
-					PushButton{AssignTo: &zoomOut, Text: "−", ToolTipText: "Zoom out",
-						MaxSize: Size{Width: 32}, OnClicked: func() { changeZoom(a.view.zoom - core.CalendarZoomStep) }},
-					PushButton{AssignTo: &zoomReset, Text: fmt.Sprintf("%d%%", a.view.zoom), ToolTipText: "Reset calendar zoom",
-						MaxSize: Size{Width: 56}, OnClicked: func() { changeZoom(core.CalendarZoomDefault) }},
-					PushButton{AssignTo: &zoomIn, Text: "+", ToolTipText: "Zoom in",
-						MaxSize: Size{Width: 32}, OnClicked: func() { changeZoom(a.view.zoom + core.CalendarZoomStep) }},
-				},
-			},
 			CustomWidget{
 				AssignTo:            &cw,
 				PaintPixels:         func(c *walk.Canvas, r walk.Rectangle) error { return a.view.paint(c, r) },
@@ -124,9 +96,13 @@ func (a *App) Run(startMinimized bool) error {
 				InvalidatesOnResize: true,
 				StretchFactor:       1,
 			},
-		},
-		StatusBarItems: []StatusBarItem{
-			{AssignTo: &a.status, Text: "Ready", Width: 600},
+			// Our own status bar: the native one leaves trails of its size grip when resized.
+			Composite{Background: SolidColorBrush{Color: flLine}, MinSize: Size{Height: 1}, MaxSize: Size{Height: 1}},
+			Composite{
+				AssignTo:   &a.statusBar,
+				Background: SolidColorBrush{Color: flSurface},
+				Layout:     HBox{Margins: Margins{Left: 12, Top: 3, Right: 10, Bottom: 3}, Spacing: 8},
+			},
 		},
 	}.Create()
 	if err != nil {
@@ -134,7 +110,7 @@ func (a *App) Run(startMinimized bool) error {
 	}
 	a.view.attach(cw)
 	a.buildToolbar()
-	updateZoom()
+	a.buildStatusBar()
 
 	// Close (X) hides to tray instead of exiting.
 	a.mw.Closing().Attach(func(canceled *bool, reason walk.CloseReason) {
@@ -239,6 +215,30 @@ func (a *App) buildToolbar() {
 	settings.SetToolTipText("Settings")
 	a.updateCalButton()
 	a.onViewChanged()
+}
+
+// buildStatusBar fills the bottom bar: the sync status, and the zoom of the calendar.
+func (a *App) buildStatusBar() {
+	sb := a.statusBar
+	a.status = label(sb, "Ready", uiFont(9, false), flText2)
+	walk.NewHSpacer(sb)
+	a.zoomCtl, _ = newZoomControl(sb, a.view.zoom, flSurface, func(percent int) { a.setZoom(percent, -1) })
+	a.zoomCtl.SetToolTipText("Calendar zoom: Ctrl+mouse wheel, Ctrl+Plus, Ctrl+Minus; Ctrl+0 or a click on the percentage resets it")
+}
+
+// setZoom zooms the calendar, keeping what is at y (-1: the middle) in place, and saves the level.
+func (a *App) setZoom(percent, y int) {
+	percent = core.CalendarZoom(percent)
+	if percent == a.view.zoom {
+		return
+	}
+	if err := a.svc.SaveCalendarZoom(percent); err != nil {
+		a.setStatus("Failed to save calendar zoom: " + err.Error())
+	}
+	a.view.zoomAt(percent, y)
+	if a.zoomCtl != nil {
+		a.zoomCtl.SetPercent(percent)
+	}
 }
 
 // updateCalButton shows on the Calendars button how many calendars are visible.

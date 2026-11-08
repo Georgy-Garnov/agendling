@@ -3,13 +3,18 @@
 package ui
 
 import (
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/lxn/walk"
 	"github.com/lxn/win"
+
+	"github.com/Georgy-Garnov/agendling/internal/core"
 )
 
 // A small Fluent-style kit drawn with GDI: palette, fonts, Segoe icon glyphs and a few owner-drawn
@@ -758,4 +763,135 @@ func newColorDot(parent walk.Container, c, bg walk.Color) *painted {
 		dot.Dispose()
 	})
 	return p
+}
+
+// fillRoundAlpha paints an antialiased rounded rectangle of colour col and opacity alpha over
+// what is already drawn.
+func fillRoundAlpha(c *walk.Canvas, r walk.Rectangle, radius float64, col walk.Color, alpha byte) {
+	if r.Width <= 0 || r.Height <= 0 {
+		return
+	}
+	hdc := c.HDC()
+	mem := win.CreateCompatibleDC(hdc)
+	defer win.DeleteDC(mem)
+	bi := win.BITMAPINFOHEADER{BiWidth: int32(r.Width), BiHeight: -int32(r.Height), BiPlanes: 1, BiBitCount: 32, BiCompression: win.BI_RGB}
+	bi.BiSize = uint32(unsafe.Sizeof(bi))
+	var bits unsafe.Pointer
+	bmp := win.CreateDIBSection(hdc, &bi, win.DIB_RGB_COLORS, &bits, 0, 0)
+	if bmp == 0 {
+		return
+	}
+	defer win.DeleteObject(win.HGDIOBJ(bmp))
+	pix := unsafe.Slice((*byte)(bits), r.Width*r.Height*4)
+	radius = min(radius, float64(min(r.Width, r.Height))/2)
+	hw, hh := float64(r.Width)/2, float64(r.Height)/2
+	for y := 0; y < r.Height; y++ {
+		for x := 0; x < r.Width; x++ {
+			// Coverage of the pixel from its distance to the rounded rectangle's edge.
+			qx := math.Abs(float64(x)+0.5-hw) - (hw - radius)
+			qy := math.Abs(float64(y)+0.5-hh) - (hh - radius)
+			d := math.Hypot(math.Max(qx, 0), math.Max(qy, 0)) + math.Min(math.Max(qx, qy), 0) - radius
+			a := math.Min(math.Max(0.5-d, 0), 1) * float64(alpha) / 255
+			i := (y*r.Width + x) * 4
+			pix[i] = byte(float64(col.B())*a + 0.5) // premultiplied BGRA
+			pix[i+1] = byte(float64(col.G())*a + 0.5)
+			pix[i+2] = byte(float64(col.R())*a + 0.5)
+			pix[i+3] = byte(a*255 + 0.5)
+		}
+	}
+	old := win.SelectObject(mem, win.HGDIOBJ(bmp))
+	win.AlphaBlend(hdc, int32(r.X), int32(r.Y), int32(r.Width), int32(r.Height), mem, 0, 0, int32(r.Width), int32(r.Height),
+		win.BLENDFUNCTION{SourceConstantAlpha: 255, AlphaFormat: win.AC_SRC_ALPHA})
+	win.SelectObject(mem, old)
+}
+
+// ---------- zoom control ----------
+
+const (
+	glyphMinus = "\uE738"
+	glyphPlus  = "\uE710"
+)
+
+// zoomControl is "−  100%  +" in the status bar: zoom out, the level (a click resets it to
+// 100%) and zoom in.
+type zoomControl struct {
+	*painted
+	percent  int
+	hover    int // part under the mouse: 0 out, 1 the level, 2 in; -1 none
+	hovering bool
+	bg       walk.Color
+	onZoom   func(percent int)
+}
+
+const zoomBtnW, zoomLevelW, zoomH = 28, 52, 24
+
+func newZoomControl(parent walk.Container, percent int, bg walk.Color, onZoom func(int)) (*zoomControl, error) {
+	z := &zoomControl{percent: percent, hover: -1, bg: bg, onZoom: onZoom}
+	p, err := newPainted(parent, 0, walk.Size{Width: 2*zoomBtnW + zoomLevelW, Height: zoomH}, sizeFixed, z.paint)
+	if err != nil {
+		return nil, err
+	}
+	z.painted = p
+	p.SetCursor(walk.CursorHand())
+	p.MouseMove().Attach(func(x, _ int, _ walk.MouseButton) {
+		if h := z.partAt(x); h != z.hover {
+			z.hover = h
+			p.Invalidate()
+		}
+		trackHover(p, &z.hovering, func() { z.hover = -1; p.Invalidate() })
+	})
+	p.MouseUp().Attach(func(x, _ int, b walk.MouseButton) {
+		if b != walk.LeftButton {
+			return
+		}
+		switch z.partAt(x) {
+		case 0:
+			z.onZoom(core.NextZoom(z.percent, -1))
+		case 1:
+			z.onZoom(core.CalendarZoomDefault)
+		case 2:
+			z.onZoom(core.NextZoom(z.percent, 1))
+		}
+	})
+	return z, nil
+}
+
+func (z *zoomControl) SetPercent(p int) {
+	z.percent = p
+	z.Invalidate()
+}
+
+func (z *zoomControl) partAt(x int) int {
+	switch {
+	case x < scale(z, zoomBtnW):
+		return 0
+	case x < scale(z, zoomBtnW+zoomLevelW):
+		return 1
+	}
+	return 2
+}
+
+func (z *zoomControl) paint(cv *walk.Canvas, b walk.Rectangle) {
+	bg := solid(z.bg)
+	cv.FillRectanglePixels(bg, b)
+	bg.Dispose()
+	parts := []walk.Rectangle{
+		{X: 0, Y: 0, Width: scale(z, zoomBtnW), Height: b.Height},
+		{X: scale(z, zoomBtnW), Y: 0, Width: scale(z, zoomLevelW), Height: b.Height},
+		{X: scale(z, zoomBtnW+zoomLevelW), Y: 0, Width: b.Width - scale(z, zoomBtnW+zoomLevelW), Height: b.Height},
+	}
+	enabled := []bool{z.percent > core.CalendarZoomMin, true, z.percent < core.CalendarZoomMax}
+	if z.hover >= 0 && enabled[z.hover] {
+		fillRound(cv, flHover, parts[z.hover], scale(z, 4))
+	}
+	color := func(i int) walk.Color {
+		if !enabled[i] {
+			return walk.RGB(0xb8, 0xbd, 0xc4)
+		}
+		return flText2
+	}
+	center := walk.TextCenter | walk.TextVCenter | walk.TextSingleLine
+	drawText(cv, glyphMinus, iconFont(9), color(0), parts[0], center)
+	drawText(cv, fmt.Sprintf("%d%%", z.percent), uiFont(9, false), flText, parts[1], center)
+	drawText(cv, glyphPlus, iconFont(9), color(2), parts[2], center)
 }

@@ -155,10 +155,11 @@ alerts.
 
 | Action | Mouse | Keyboard |
 |---|---|---|
-| Previous / next period | ◀ ▶ buttons, or the wheel in month and 2-week views | ← → or PgUp / PgDn |
+| Previous / next period | ◀ ▶ buttons, or the wheel in month and 2-week views at up to 100% | ← → or PgUp / PgDn |
 | Jump to today | **Today** | T or Home |
 | Switch view | **Day / Week / 2 Weeks / Month** | D / W / M |
-| Scroll hours (day and week views) | mouse wheel | ↑ ↓ |
+| Scroll (hours; weeks of a zoomed-in month) | mouse wheel, the scrollbar, or press and hold an empty spot, then drag | ↑ ↓ |
+| Zoom the calendar | Ctrl + wheel, or **− 100% +** in the status bar | Ctrl + Plus / Minus, Ctrl + 0 |
 | Open a day | click the day header or "+N more" | |
 | Edit an event | click it | |
 | New event | **+ New event**, or double-click an empty slot | N |
@@ -166,8 +167,12 @@ alerts.
 Double-clicking the all-day strip creates an all-day event. Double-clicking a month cell creates
 an event at 09:00 that day.
 
-Use **− / percentage / +** above the calendar to zoom from 80% to 160%. Click the percentage to
-reset to 100%. The selected level is saved and restored on restart.
+**Zoom** (80% to 160%) scales the calendar grid — text, the height of an hour, the weeks of a
+month — while the rest of the window stays as it is. Zooming with the wheel keeps what is under the
+mouse in place; a click on the percentage goes back to 100%, and the level is kept across
+restarts. Zoomed in, the month and 2-week views scroll instead of squeezing the weeks into the
+window. The scrollbar is a thin line at the right edge that widens under the mouse, Windows 11
+style; a press-and-hold on an empty spot (or the middle mouse button) drags the view.
 
 ### Events
 
