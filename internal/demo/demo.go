@@ -92,7 +92,8 @@ func (a *Accounts) Close() {
 // Start launches the demo accounts. With ports > 0 they listen on 127.0.0.1:port so another
 // process (the app under test) can reach them.
 func Start(workPort, cloudPort int) (*Accounts, error) {
-	monday := time.Now().Truncate(24 * time.Hour)
+	now := time.Now()
+	monday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local) // Truncate would cut in UTC
 	for monday.Weekday() != time.Monday {
 		monday = monday.AddDate(0, 0, -1)
 	}
@@ -173,7 +174,8 @@ func Start(workPort, cloudPort int) (*Accounts, error) {
 // Seed adds the demo accounts and a local calendar with a few events to an empty store, and
 // mutes sounds (screenshot tours open reminder popups).
 func Seed(store *storage.Store, acc *Accounts) error {
-	monday := time.Now().Truncate(24 * time.Hour)
+	now := time.Now()
+	monday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local) // Truncate would cut in UTC
 	for monday.Weekday() != time.Monday {
 		monday = monday.AddDate(0, 0, -1)
 	}
