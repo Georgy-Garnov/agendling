@@ -91,7 +91,16 @@ func (s *Service) NewEventAlerts(sourceID int64, events []*model.Event) (alerts 
 		return nil, 0
 	}
 	cal, _ := s.Store.Source(sourceID)
+	hidden := s.hiddenCalendars()
 	now := time.Now()
+	var shown []*model.Event
+	for _, e := range events {
+		// Calendars unticked in the main window stay quiet; their reminders still fire.
+		if !hidden[sourceKey(sourceID)] && !hidden[eventKey(e, cal)] {
+			shown = append(shown, e)
+		}
+	}
+	events = shown
 	for _, e := range events {
 		if len(alerts) == MaxNewEventPopups {
 			break
@@ -108,7 +117,7 @@ func (s *Service) NewEventAlerts(sourceID int64, events []*model.Event) (alerts 
 // EditorInput is what an event editor form collects, independent of the toolkit.
 type EditorInput struct {
 	Title, Description, Location, URL string
-	Calendar                          *model.CalendarSource
+	Calendar                          *Calendar
 	AllDay                            bool
 	StartDate, EndDate                time.Time // dates; EndDate is inclusive for all-day events
 	StartClock, EndClock              string    // "HH:MM", ignored for all-day events
@@ -165,16 +174,25 @@ func (s *Service) ApplyEdit(e *model.Event, in EditorInput) error {
 	if updated.TZID == "" && !in.AllDay {
 		updated.TZID = LocalTZID
 	}
-	if err := s.SaveEvent(&updated, e.CalendarID, in.Calendar); err != nil {
+	if err := s.SaveEvent(&updated, e.CalendarID, *in.Calendar); err != nil {
 		return err
 	}
 	*e = updated
 	return nil
 }
 
-// SaveEvent persists an event, moving it between calendars if needed, and queues a push.
-func (s *Service) SaveEvent(e *model.Event, oldCalID int64, cal *model.CalendarSource) error {
-	if e.ID != 0 && oldCalID != cal.ID {
+// SaveEvent persists an event into cal, moving it between calendars if needed, and queues a push.
+func (s *Service) SaveEvent(e *model.Event, oldCalID int64, cal Calendar) error {
+	src := cal.Source
+	// Where a CalDAV event that is not on the server yet will be created.
+	targetHref := func(uid string) string {
+		if src.IsLocal() || cal.Collection == "" {
+			return ""
+		}
+		return caldav.ObjectHref(cal.Collection, uid)
+	}
+	switch {
+	case e.ID != 0 && oldCalID != src.ID:
 		series, err := s.Store.EventsByUID(oldCalID, e.UID)
 		if err != nil {
 			return err
@@ -191,8 +209,8 @@ func (s *Service) SaveEvent(e *model.Event, oldCalID int64, cal *model.CalendarS
 			if ev.ID == e.ID {
 				cp = *e
 			}
-			cp.ID, cp.CalendarID, cp.Href, cp.ETag = 0, cal.ID, "", ""
-			cp.Dirty = !cal.IsLocal()
+			cp.ID, cp.CalendarID, cp.Href, cp.ETag, cp.MovedFrom = 0, src.ID, targetHref(cp.UID), "", ""
+			cp.Dirty = !src.IsLocal()
 			if err := s.Store.SaveEvent(&cp); err != nil {
 				return err
 			}
@@ -200,15 +218,38 @@ func (s *Service) SaveEvent(e *model.Event, oldCalID int64, cal *model.CalendarS
 				*e = cp
 			}
 		}
-	} else {
-		e.CalendarID = cal.ID
-		e.Dirty = !cal.IsLocal()
+	case e.ID != 0 && e.Href != "" && cal.Collection != "" && caldav.CollectionOf(e.Href) != cal.Collection:
+		// Another calendar of the same account: the next sync stores the series at the new
+		// href and then deletes the old copy (MovedFrom).
+		series, err := s.Store.EventsByUID(src.ID, e.UID)
+		if err != nil {
+			return err
+		}
+		newHref := targetHref(e.UID)
+		for _, ev := range series {
+			if ev.ID == e.ID {
+				ev = e
+			}
+			if ev.MovedFrom == "" {
+				ev.MovedFrom = ev.Href
+			}
+			ev.Href, ev.ETag, ev.Dirty = newHref, "", true
+			if err := s.Store.SaveEvent(ev); err != nil {
+				return err
+			}
+		}
+	default:
+		e.CalendarID = src.ID
+		e.Dirty = !src.IsLocal()
+		if e.Href == "" {
+			e.Href = targetHref(e.UID)
+		}
 		if err := s.Store.SaveEvent(e); err != nil {
 			return err
 		}
 	}
-	if !cal.IsLocal() {
-		s.Engine.SyncSource(cal.ID)
+	if !src.IsLocal() {
+		s.Engine.SyncSource(src.ID)
 	}
 	return nil
 }
@@ -283,22 +324,4 @@ func (s *Service) DeleteOccurrence(e *model.Event, occStart time.Time) error {
 		s.Engine.SyncSource(cal.ID)
 	}
 	return nil
-}
-
-// EditableCalendars lists enabled calendars (plus the event's current one) for a picker,
-// with the index of currentID.
-func (s *Service) EditableCalendars(currentID int64) ([]*model.CalendarSource, int) {
-	srcs, _ := s.Store.Sources()
-	var cals []*model.CalendarSource
-	idx := 0
-	for _, src := range srcs {
-		if !src.Enabled && src.ID != currentID {
-			continue
-		}
-		if src.ID == currentID {
-			idx = len(cals)
-		}
-		cals = append(cals, src)
-	}
-	return cals, idx
 }

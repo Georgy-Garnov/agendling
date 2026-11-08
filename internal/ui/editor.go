@@ -69,14 +69,10 @@ func updateDescLinks(w *editorWidgets) {
 // editEvent shows the modal editor. occStart identifies the clicked occurrence of a series.
 func (a *App) editEvent(e *model.Event, occStart time.Time) {
 	isNew := e.ID == 0
-	cals, calIdx := a.svc.EditableCalendars(e.CalendarID)
+	cals, calIdx := a.svc.EditableCalendars(e)
 	var calNames []string
 	for _, c := range cals {
-		label := c.Name
-		if c.IsLocal() {
-			label += "  (local)"
-		}
-		calNames = append(calNames, label)
+		calNames = append(calNames, c.Label())
 	}
 	if len(cals) == 0 {
 		walk.MsgBox(a.mw, appinfo.Name, "Add a calendar in Settings first.", walk.MsgBoxIconInformation)
@@ -118,84 +114,108 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 		title = "New event"
 	}
 	times := core.TimeChoices()
+	field := func(text string) Label {
+		return Label{Text: text, TextColor: flText2, Background: TransparentBrush{}}
+	}
+	var cards [3]*walk.Composite
+	cardLayout := func() Layout {
+		return Grid{Columns: 2, Margins: Margins{Left: 16, Top: 14, Right: 16, Bottom: 14}, Spacing: 10}
+	}
 	err := Dialog{
 		AssignTo:      &w.dlg,
 		Title:         title,
-		MinSize:       Size{Width: 520, Height: 560},
+		Font:          Font{Family: "Segoe UI", PointSize: 10},
+		Background:    SolidColorBrush{Color: flWindow},
+		MinSize:       Size{Width: 600, Height: 640},
 		DefaultButton: &acceptBtn,
 		CancelButton:  &cancelBtn,
-		Layout:        Grid{Columns: 2},
+		Layout:        VBox{MarginsZero: true, SpacingZero: true},
 		Children: []Widget{
-			Label{Text: "Title:"},
-			LineEdit{AssignTo: &w.title, Text: e.Title},
-
-			Label{Text: "Calendar:"},
-			ComboBox{AssignTo: &w.calendar, Model: calNames, CurrentIndex: calIdx},
-
-			Label{Text: "Start:"},
-			Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
-				DateEdit{AssignTo: &w.startDate, Date: e.StartTime, Format: "ddd dd.MM.yyyy"},
-				ComboBox{AssignTo: &w.startTime, Editable: true, Model: times, Value: e.StartTime.Format("15:04"), MaxSize: Size{Width: 80}},
-				HSpacer{},
-			}},
-
-			Label{Text: "End:"},
-			Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
-				DateEdit{AssignTo: &w.endDate, Date: displayEnd, Format: "ddd dd.MM.yyyy"},
-				ComboBox{AssignTo: &w.endTime, Editable: true, Model: times, Value: e.EndTime.Format("15:04"), MaxSize: Size{Width: 80}},
-				HSpacer{},
-			}},
-
-			Label{},
-			CheckBox{AssignTo: &w.allDay, Text: "All-day event", Checked: e.AllDay, OnCheckedChanged: func() {
-				w.startTime.SetEnabled(!w.allDay.Checked())
-				w.endTime.SetEnabled(!w.allDay.Checked())
-			}},
-
-			Label{Text: "Repeat:"},
-			ComboBox{AssignTo: &w.repeat, Model: repeatLabels, CurrentIndex: repeatIdx},
-
-			Label{Text: "Location:"},
-			LineEdit{AssignTo: &w.location, Text: e.Location},
-
-			Label{Text: "Web link:"},
-			Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
-				LineEdit{AssignTo: &w.url, Text: e.URL},
-				PushButton{Text: "Open", MaxSize: Size{Width: 60}, OnClicked: func() { OpenURL(strings.TrimSpace(w.url.Text())) }},
-			}},
-
-			Label{Text: "Reminders:"},
-			LineEdit{AssignTo: &w.rems, Text: rems, CueBanner: "default: " + defaultRems + "  (e.g. 5, 15, 1h, 1d)"},
-
-			Label{Text: "Description:", Alignment: AlignHNearVNear},
-			TextEdit{AssignTo: &w.desc, Text: toCRLF(e.Description), VScroll: true, MinSize: Size{Height: 120},
-				OnTextChanged: func() { updateDescLinks(&w) }},
-
-			Label{},
-			LinkLabel{AssignTo: &w.descLinks, MaxSize: Size{Width: 400},
-				OnLinkActivated: func(link *walk.LinkLabelLink) { OpenURL(link.URL()) }},
-
-			Label{},
-			Label{Text: seriesNote, TextColor: walk.RGB(110, 110, 110), Visible: seriesNote != ""},
-
 			Composite{
-				ColumnSpan: 2,
-				Layout:     HBox{MarginsZero: true},
+				Layout: VBox{Margins: Margins{Left: 20, Top: 18, Right: 20, Bottom: 16}, Spacing: 10},
 				Children: []Widget{
-					PushButton{AssignTo: &deleteBtn, Text: "Delete", Visible: !isNew, OnClicked: func() {
-						if a.deleteEvent(w.dlg, e, occStart) {
-							w.dlg.Cancel()
-						}
-					}},
+					LineEdit{AssignTo: &w.title, Text: e.Title, CueBanner: "Event title", Font: Font{Family: "Segoe UI", PointSize: 14},
+						MinSize: Size{Height: 36}},
+					Composite{
+						AssignTo: &cards[0],
+						Layout:   cardLayout(),
+						Children: []Widget{
+							field("Calendar"),
+							ComboBox{AssignTo: &w.calendar, Model: calNames, CurrentIndex: calIdx},
+							field("Starts"),
+							Composite{Layout: HBox{MarginsZero: true}, Background: TransparentBrush{}, Children: []Widget{
+								DateEdit{AssignTo: &w.startDate, Date: e.StartTime, Format: "ddd dd.MM.yyyy", MinSize: Size{Width: 150}},
+								ComboBox{AssignTo: &w.startTime, Editable: true, Model: times, Value: e.StartTime.Format("15:04"),
+									MinSize: Size{Width: 90}, MaxSize: Size{Width: 90}},
+								HSpacer{},
+							}},
+							field("Ends"),
+							Composite{Layout: HBox{MarginsZero: true}, Background: TransparentBrush{}, Children: []Widget{
+								DateEdit{AssignTo: &w.endDate, Date: displayEnd, Format: "ddd dd.MM.yyyy", MinSize: Size{Width: 150}},
+								ComboBox{AssignTo: &w.endTime, Editable: true, Model: times, Value: e.EndTime.Format("15:04"),
+									MinSize: Size{Width: 90}, MaxSize: Size{Width: 90}},
+								HSpacer{},
+							}},
+							Label{Background: TransparentBrush{}},
+							CheckBox{AssignTo: &w.allDay, Text: "All-day event", Checked: e.AllDay, Background: TransparentBrush{},
+								OnCheckedChanged: func() {
+									w.startTime.SetEnabled(!w.allDay.Checked())
+									w.endTime.SetEnabled(!w.allDay.Checked())
+								}},
+							field("Repeat"),
+							ComboBox{AssignTo: &w.repeat, Model: repeatLabels, CurrentIndex: repeatIdx},
+						},
+					},
+					Composite{
+						AssignTo: &cards[1],
+						Layout:   cardLayout(),
+						Children: []Widget{
+							field("Location"),
+							LineEdit{AssignTo: &w.location, Text: e.Location},
+							field("Web link"),
+							Composite{Layout: HBox{MarginsZero: true}, Background: TransparentBrush{}, Children: []Widget{
+								LineEdit{AssignTo: &w.url, Text: e.URL},
+								PushButton{Text: "Open", MinSize: Size{Width: 70}, MaxSize: Size{Width: 70},
+									OnClicked: func() { OpenURL(strings.TrimSpace(w.url.Text())) }},
+							}},
+							field("Reminders"),
+							LineEdit{AssignTo: &w.rems, Text: rems, CueBanner: "default: " + defaultRems + "  (e.g. 5, 15, 1h, 1d)"},
+						},
+					},
+					Composite{
+						AssignTo: &cards[2],
+						Layout:   VBox{Margins: Margins{Left: 16, Top: 14, Right: 16, Bottom: 14}, Spacing: 6},
+						Children: []Widget{
+							field("Description"),
+							TextEdit{AssignTo: &w.desc, Text: toCRLF(e.Description), VScroll: true, MinSize: Size{Height: 110},
+								OnTextChanged: func() { updateDescLinks(&w) }},
+							LinkLabel{AssignTo: &w.descLinks, Background: TransparentBrush{},
+								OnLinkActivated: func(link *walk.LinkLabelLink) { OpenURL(link.URL()) }},
+							Label{Text: seriesNote, TextColor: flText2, Background: TransparentBrush{}, Visible: seriesNote != ""},
+						},
+					},
+				},
+			},
+			Composite{Background: SolidColorBrush{Color: flLine}, MinSize: Size{Height: 1}, MaxSize: Size{Height: 1}},
+			Composite{
+				Background: SolidColorBrush{Color: flSurface},
+				Layout:     HBox{Margins: Margins{Left: 20, Top: 14, Right: 20, Bottom: 14}, Spacing: 8},
+				Children: []Widget{
+					PushButton{AssignTo: &deleteBtn, Text: "Delete", Visible: !isNew, MinSize: Size{Width: 96, Height: 32},
+						OnClicked: func() {
+							if a.deleteEvent(w.dlg, e, occStart) {
+								w.dlg.Cancel()
+							}
+						}},
 					HSpacer{},
-					PushButton{AssignTo: &acceptBtn, Text: "Save", OnClicked: func() {
+					PushButton{AssignTo: &acceptBtn, Text: "Save", MinSize: Size{Width: 96, Height: 32}, OnClicked: func() {
 						if err := a.applyEditor(&w, e, cals, customRule); err != nil {
 							walk.MsgBox(w.dlg, "Cannot save", err.Error(), walk.MsgBoxIconWarning)
 							return
 						}
-						w.dlg.Accept()
+						acceptLater(w.dlg)
 					}},
-					PushButton{AssignTo: &cancelBtn, Text: "Cancel", OnClicked: func() { w.dlg.Cancel() }},
+					PushButton{AssignTo: &cancelBtn, Text: "Cancel", MinSize: Size{Width: 96, Height: 32}, OnClicked: func() { w.dlg.Cancel() }},
 				},
 			},
 		},
@@ -204,11 +224,18 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 		log.Printf("editor: %v", err)
 		return
 	}
+	for _, c := range cards {
+		makeCard(c, flWindow)
+	}
+	a.applyIcon(w.dlg)
 	w.startTime.SetEnabled(!e.AllDay)
 	w.endTime.SetEnabled(!e.AllDay)
 	// Fill the links row once the dialog is on screen: walk skips the layout pass for a
 	// row made visible before the first show, so it would stay collapsed until an edit.
 	w.dlg.Starting().Attach(func() { updateDescLinks(&w) })
+	if dialogHook != nil {
+		w.dlg.Starting().Attach(func() { dialogHook("event", w.dlg) })
+	}
 	w.dlg.Run()
 }
 
@@ -217,7 +244,7 @@ func toCRLF(s string) string {
 }
 
 // applyEditor collects the form and hands it to the core for validation and saving.
-func (a *App) applyEditor(w *editorWidgets, e *model.Event, cals []*model.CalendarSource, customRule string) error {
+func (a *App) applyEditor(w *editorWidgets, e *model.Event, cals []core.Calendar, customRule string) error {
 	in := core.EditorInput{
 		Title:       w.title.Text(),
 		Description: w.desc.Text(),
@@ -232,7 +259,7 @@ func (a *App) applyEditor(w *editorWidgets, e *model.Event, cals []*model.Calend
 		Rule:        core.RuleForChoice(w.repeat.CurrentIndex(), customRule),
 	}
 	if i := w.calendar.CurrentIndex(); i >= 0 && i < len(cals) {
-		in.Calendar = cals[i]
+		in.Calendar = &cals[i]
 	}
 	return a.svc.ApplyEdit(e, in)
 }

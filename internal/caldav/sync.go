@@ -276,6 +276,7 @@ type discovery struct {
 	endpoint    string // server root the paths refer to; "" means the configured URL
 	home        string // calendar home set ("" when the URL is a bare collection)
 	collections []string
+	names       map[string]string // collection path -> display name, when the server has one
 }
 
 // discover finds the calendar home set and the event collections of a source.
@@ -329,12 +330,18 @@ func discover(ctx context.Context, hc webdav.HTTPClient, src *model.CalendarSour
 	for _, cal := range cals {
 		if cleanDir(cal.Path) == direct {
 			// URL points to a specific calendar
-			return discovery{endpoint: d.endpoint, collections: []string{cal.Path}}, nil
+			return discovery{endpoint: d.endpoint, collections: []string{cal.Path}, names: map[string]string{cal.Path: cal.Name}}, nil
 		}
 	}
 	for _, cal := range cals {
 		if supportsEvents(cal) {
 			d.collections = append(d.collections, cal.Path)
+			if cal.Name != "" {
+				if d.names == nil {
+					d.names = map[string]string{}
+				}
+				d.names[cal.Path] = cal.Name
+			}
 		}
 	}
 	if len(d.collections) == 0 {
@@ -377,20 +384,34 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 	hc := newHTTPClient(src)
 	now := time.Now()
 	st := loadState(store, src.ID)
-	full := st.needsFull(now)
+	hidden := hiddenSet(src.HiddenCollections)
+	// A changed calendar selection needs a full pull, which also drops events of hidden calendars.
+	wasHidden := hiddenSet(st.Hidden)
+	full := st.needsFull(now) || !sameKeys(wasHidden, hidden)
 	if full {
 		d, err := discover(ctx, hc, src)
 		if err != nil {
 			return nil, err
 		}
-		st = syncState{Version: stateVersion, Endpoint: d.endpoint, Home: d.home, Collections: d.collections}
+		st = syncState{Version: stateVersion, Endpoint: d.endpoint, Home: d.home, Collections: d.collections,
+			Names: d.names, Hidden: src.HiddenCollections}
 		log.Printf("sync %q: discovered %d calendar(s) on %s", src.Name, len(st.Collections), st.endpoint(src.URL))
+	}
+	var visible []string
+	for _, coll := range st.Collections {
+		if !hidden[cleanDir(coll)] {
+			visible = append(visible, coll)
+		}
+	}
+	if len(visible) == 0 {
+		return nil, errors.Join(errors.New("all calendars of this account are hidden; select at least one in its settings"),
+			saveState(store, src.ID, st))
 	}
 	c, err := caldav.NewClient(hc, st.endpoint(src.URL))
 	if err != nil {
 		return nil, err
 	}
-	src.CalendarPath = writePathFor(st.Collections, src.CalendarPath)
+	src.CalendarPath = writePathFor(visible, src.CalendarPath)
 
 	pushErr := push(ctx, c, store, src)
 	var te *ThrottledError
@@ -398,7 +419,7 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 		return nil, pushErr
 	}
 
-	tags, err := fetchCTags(ctx, hc, st.endpoint(src.URL), &st)
+	tags, err := fetchCTags(ctx, hc, st.endpoint(src.URL), st.Home, visible)
 	if errors.As(err, &te) {
 		return nil, err
 	}
@@ -407,7 +428,7 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 		tags = map[string]string{}
 	}
 	var changed []string
-	for _, coll := range st.Collections {
+	for _, coll := range visible {
 		tag := tags[cleanDir(coll)]
 		if full || tag == "" || tag != st.CTags[cleanDir(coll)] {
 			changed = append(changed, coll)
@@ -434,7 +455,7 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 			events = append(events, ics.ToEvents(obj.Data, obj.Path, obj.ETag)...)
 		}
 	}
-	log.Printf("sync %q: fetched %d event(s) from %d of %d calendar(s)", src.Name, len(events), len(changed), len(st.Collections))
+	log.Printf("sync %q: fetched %d event(s) from %d of %d calendar(s)", src.Name, len(events), len(changed), len(visible))
 
 	known, err := store.KnownUIDs(src.ID)
 	if err != nil {
@@ -442,7 +463,14 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 	}
 	var added []*model.Event
 	if !src.LastSync.IsZero() || len(known) > 0 {
-		added = newUpcoming(events, known, now)
+		// Events of calendars the user just chose to show are an import, not new meetings.
+		var fresh []*model.Event
+		for _, e := range events {
+			if !wasHidden[cleanDir(path.Dir(e.Href))] {
+				fresh = append(fresh, e)
+			}
+		}
+		added = newUpcoming(fresh, known, now)
 	}
 	if full {
 		err = store.ReplaceRemoteEvents(src.ID, events)
@@ -458,7 +486,7 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 	}
 
 	newTags := map[string]string{}
-	for _, coll := range st.Collections {
+	for _, coll := range visible {
 		if tag := tags[cleanDir(coll)]; tag != "" {
 			newTags[cleanDir(coll)] = tag
 		}
@@ -541,6 +569,22 @@ func pushSeries(ctx context.Context, c *caldav.Client, store *storage.Store, src
 		}
 	}
 
+	// Copies left behind in another calendar by a move; removed once the event is safe at href.
+	stale := map[string]bool{}
+	for _, ev := range series {
+		if ev.MovedFrom != "" && ev.MovedFrom != href {
+			stale[ev.MovedFrom] = true
+		}
+	}
+	removeStale := func() error {
+		for old := range stale {
+			if err := c.RemoveAll(ctx, old); err != nil && !isNotFound(err) {
+				return err
+			}
+		}
+		return nil
+	}
+
 	if master == nil || master.Deleted {
 		// Whole series deleted locally.
 		if href != "" {
@@ -548,14 +592,20 @@ func pushSeries(ctx context.Context, c *caldav.Client, store *storage.Store, src
 				return err
 			}
 		}
+		if err := removeStale(); err != nil {
+			return err
+		}
 		return store.PurgeUID(src.ID, series[0].UID)
 	}
 
 	if href == "" {
-		href = path.Join(src.CalendarPath, sanitize(master.UID)+".ics")
+		href = ObjectHref(src.CalendarPath, master.UID)
 	}
 	obj, err := c.PutCalendarObject(ctx, href, ics.FromEvents(live))
 	if err != nil {
+		return err
+	}
+	if err := removeStale(); err != nil {
 		return err
 	}
 	for _, ev := range series {
@@ -565,7 +615,7 @@ func pushSeries(ctx context.Context, c *caldav.Client, store *storage.Store, src
 			}
 			continue
 		}
-		ev.Href, ev.ETag, ev.Dirty = href, obj.ETag, false
+		ev.Href, ev.ETag, ev.Dirty, ev.MovedFrom = href, obj.ETag, false, ""
 		if err := store.SaveEvent(ev); err != nil {
 			return err
 		}
@@ -579,6 +629,22 @@ func isNotFound(err error) bool {
 	return strings.Contains(msg, "404") || strings.Contains(msg, "410")
 }
 
+// ObjectHref is where a new event with uid is stored in collection.
+func ObjectHref(collection, uid string) string {
+	return path.Join(collection, sanitize(uid)+".ics")
+}
+
+// CollectionOf returns the collection path an object href belongs to, in the form used by
+// CalendarInfo.Path.
+func CollectionOf(href string) string {
+	return cleanDir(path.Dir(href))
+}
+
+// NormalizeCollection brings a collection path into the form used by CalendarInfo.Path.
+func NormalizeCollection(p string) string {
+	return cleanDir(p)
+}
+
 func sanitize(uid string) string {
 	return strings.Map(func(r rune) rune {
 		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.' {
@@ -589,7 +655,56 @@ func sanitize(uid string) string {
 }
 
 // TestConnection verifies credentials and discovery for the Settings dialog.
-func TestConnection(ctx context.Context, src *model.CalendarSource) (int, error) {
+// It returns the event calendars of the account.
+func TestConnection(ctx context.Context, src *model.CalendarSource) ([]CalendarInfo, error) {
 	d, err := discover(ctx, newHTTPClient(src), src)
-	return len(d.collections), err
+	if err != nil {
+		return nil, err
+	}
+	return calendarInfos(d.collections, d.names), nil
+}
+
+// CalendarInfo describes one event calendar (collection) of a CalDAV account.
+type CalendarInfo struct {
+	Path string // collection path on the server, the key used in CalendarSource.HiddenCollections
+	Name string // display name; the last path segment when the server has none
+}
+
+// KnownCalendars returns the calendars found by the last full sync of a source, so settings can
+// offer the selection without contacting the server. Empty before the first sync.
+func KnownCalendars(store *storage.Store, id int64) []CalendarInfo {
+	st := loadState(store, id)
+	return calendarInfos(st.Collections, st.Names)
+}
+
+func calendarInfos(collections []string, names map[string]string) []CalendarInfo {
+	res := make([]CalendarInfo, 0, len(collections))
+	for _, p := range collections {
+		name := names[p]
+		if name == "" {
+			name = path.Base(strings.TrimSuffix(p, "/"))
+		}
+		res = append(res, CalendarInfo{Path: cleanDir(p), Name: name})
+	}
+	return res
+}
+
+func hiddenSet(paths []string) map[string]bool {
+	set := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		set[cleanDir(p)] = true
+	}
+	return set
+}
+
+func sameKeys(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if !b[k] {
+			return false
+		}
+	}
+	return true
 }

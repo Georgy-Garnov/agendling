@@ -105,7 +105,7 @@ func (v *calView) goTo(t time.Time, m core.ViewMode) {
 // reload re-reads occurrences for the visible range from the local store.
 func (v *calView) reload() {
 	from, to := core.ViewRange(v.mode, v.anchor)
-	events, err := v.app.store.EventsInRange(from, to)
+	events, err := v.app.svc.ViewEvents(from, to)
 	if err != nil {
 		v.app.setStatus("Failed to load events: " + err.Error())
 	}

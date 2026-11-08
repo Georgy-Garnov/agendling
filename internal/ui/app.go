@@ -12,6 +12,7 @@ import (
 
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
+	"github.com/lxn/win"
 
 	"github.com/Georgy-Garnov/agendling/internal/appinfo"
 	"github.com/Georgy-Garnov/agendling/internal/audio"
@@ -31,10 +32,15 @@ type App struct {
 	mw         *walk.MainWindow
 	ni         *walk.NotifyIcon
 	view       *CalView
+	toolbar    *walk.Composite
+	seg        *segmented
+	calBtn     *flatButton
 	titleLabel *walk.Label
 	status     *walk.StatusBarItem
-	viewBtns   [4]*walk.PushButton
-	muteAction *walk.Action
+	// The Calendars dropdown, while open, and when it last closed.
+	picker       *calPicker
+	pickerClosed time.Time
+	muteAction   *walk.Action
 
 	icon    *walk.Icon
 	iconDay int
@@ -66,40 +72,21 @@ func (a *App) Run(startMinimized bool) error {
 	a.svc.EnsureDefaultCalendar()
 
 	var cw *walk.CustomWidget
-	viewButton := func(m viewMode) PushButton {
-		return PushButton{
-			AssignTo:  &a.viewBtns[m],
-			Text:      viewNames[m],
-			MaxSize:   Size{Width: 80},
-			OnClicked: func() { a.view.SetMode(m) },
-		}
-	}
 	err := MainWindow{
 		AssignTo: &a.mw,
 		Title:    appinfo.Name,
-		MinSize:  Size{Width: 640, Height: 420},
-		Size:     Size{Width: 1100, Height: 760},
+		MinSize:  Size{Width: 760, Height: 460},
+		Size:     Size{Width: 1180, Height: 780},
 		Visible:  false,
+		Font:     Font{Family: "Segoe UI", PointSize: 10},
 		Layout:   VBox{MarginsZero: true, SpacingZero: true},
 		Children: []Widget{
 			Composite{
-				Layout: HBox{Margins: Margins{Left: 8, Top: 6, Right: 8, Bottom: 6}},
-				Children: []Widget{
-					PushButton{Text: "Today", MaxSize: Size{Width: 70}, OnClicked: func() { a.view.GoTo(time.Now(), a.view.mode) }},
-					PushButton{Text: "◀", MaxSize: Size{Width: 32}, OnClicked: func() { a.view.Navigate(-1) }},
-					PushButton{Text: "▶", MaxSize: Size{Width: 32}, OnClicked: func() { a.view.Navigate(1) }},
-					Label{AssignTo: &a.titleLabel, Font: Font{Family: "Segoe UI", PointSize: 13, Bold: true}, MinSize: Size{Width: 260}},
-					HSpacer{},
-					viewButton(ViewDay),
-					viewButton(ViewWeek),
-					viewButton(View2Week),
-					viewButton(ViewMonth),
-					HSpacer{Size: 12},
-					PushButton{Text: "+ New event", OnClicked: func() { a.newEvent(time.Now().Truncate(time.Hour).Add(time.Hour), false) }},
-					PushButton{Text: "Sync", MaxSize: Size{Width: 60}, OnClicked: a.syncNow},
-					PushButton{Text: "Settings", MaxSize: Size{Width: 80}, OnClicked: a.showSettings},
-				},
+				AssignTo:   &a.toolbar,
+				Background: SolidColorBrush{Color: flSurface},
+				Layout:     HBox{Margins: Margins{Left: 14, Top: 10, Right: 14, Bottom: 10}, Spacing: 6},
 			},
+			Composite{Background: SolidColorBrush{Color: flLine}, MinSize: Size{Height: 1}, MaxSize: Size{Height: 1}},
 			CustomWidget{
 				AssignTo:            &cw,
 				PaintPixels:         func(c *walk.Canvas, r walk.Rectangle) error { return a.view.paint(c, r) },
@@ -116,6 +103,7 @@ func (a *App) Run(startMinimized bool) error {
 		return fmt.Errorf("create main window: %w", err)
 	}
 	a.view.attach(cw)
+	a.buildToolbar()
 
 	// Close (X) hides to tray instead of exiting.
 	a.mw.Closing().Attach(func(canceled *bool, reason walk.CloseReason) {
@@ -153,6 +141,9 @@ func (a *App) createTray() error {
 	}
 	a.ni = ni
 	ni.SetToolTip(appinfo.Name)
+	if a.icon != nil {
+		ni.SetIcon(a.icon) // drawn already while the window was built
+	}
 
 	add := func(text string, fn func()) *walk.Action {
 		act := walk.NewAction()
@@ -180,8 +171,61 @@ func (a *App) createTray() error {
 }
 
 func (a *App) showMain() {
+	a.updateCalButton()
 	a.view.Reload()
 	BringToFront(a.mw)
+}
+
+// applyIcon gives a dialog the app icon instead of the default window icon.
+func (a *App) applyIcon(f walk.Form) {
+	if a.icon != nil {
+		_ = f.SetIcon(a.icon)
+	}
+}
+
+// buildToolbar fills the header: navigation and the period on the left; view switcher,
+// calendars, new event, sync and settings on the right.
+func (a *App) buildToolbar() {
+	tb := a.toolbar
+	newFlatButton(tb, "", "Today", btnOutline, flSurface, func() { a.view.GoTo(time.Now(), a.view.mode) })
+	prev, _ := newFlatButton(tb, glyphPrev, "", btnGhost, flSurface, func() { a.view.Navigate(-1) })
+	prev.SetToolTipText("Previous")
+	next, _ := newFlatButton(tb, glyphNext, "", btnGhost, flSurface, func() { a.view.Navigate(1) })
+	next.SetToolTipText("Next")
+	a.titleLabel = label(tb, "", uiFont(15, true), flText)
+	a.titleLabel.SetMinMaxSize(walk.Size{Width: 300}, walk.Size{})
+	walk.NewHSpacer(tb)
+	a.seg, _ = newSegmented(tb, viewNames[:], flSurface, func(i int) { a.view.SetMode(viewMode(i)) })
+	walk.NewHSpacerFixed(tb, 6)
+	a.calBtn, _ = newFlatButton(tb, "", "Calendars", btnOutline, flSurface, a.toggleCalPicker)
+	a.calBtn.SetTrailing(glyphChevron)
+	a.calBtn.SetToolTipText("Choose which calendars to show")
+	newFlatButton(tb, glyphAdd, "New event", btnPrimary, flSurface, func() { a.newEvent(time.Now().Truncate(time.Hour).Add(time.Hour), false) })
+	walk.NewHSpacerFixed(tb, 4)
+	sync, _ := newFlatButton(tb, glyphRefresh, "", btnGhost, flSurface, a.syncNow)
+	sync.SetToolTipText("Sync now")
+	settings, _ := newFlatButton(tb, glyphSettings, "", btnGhost, flSurface, a.showSettings)
+	settings.SetToolTipText("Settings")
+	a.updateCalButton()
+	a.onViewChanged()
+}
+
+// updateCalButton shows on the Calendars button how many calendars are visible.
+func (a *App) updateCalButton() {
+	if a.calBtn != nil {
+		a.calBtn.SetText(calendarSummary(a.svc.Calendars()))
+	}
+}
+
+// calPopupForTest opens the calendar dropdown and returns its window handle (screenshot tour).
+func (a *App) calPopupForTest() func() win.HWND {
+	a.mw.Synchronize(a.toggleCalPicker)
+	return func() win.HWND {
+		if a.picker == nil {
+			return 0
+		}
+		return a.picker.dlg.Handle()
+	}
 }
 
 func (a *App) hideMain() { a.mw.Hide() }
@@ -244,6 +288,10 @@ func (a *App) requestRefresh() {
 		go a.sched.Reschedule()
 		a.mw.Synchronize(func() {
 			if a.mw.Visible() {
+				a.updateCalButton()
+				if a.picker != nil {
+					a.picker.reload()
+				}
 				a.view.Reload()
 			}
 		})
@@ -254,14 +302,8 @@ func (a *App) onViewChanged() {
 	if a.titleLabel != nil {
 		a.titleLabel.SetText(a.view.Title())
 	}
-	for m, btn := range a.viewBtns {
-		if btn != nil {
-			label := core.ViewNames[m]
-			if viewMode(m) == a.view.mode {
-				label = "[" + label + "]"
-			}
-			btn.SetText(label)
-		}
+	if a.seg != nil {
+		a.seg.SetSelected(int(a.view.mode))
 	}
 	a.refreshIcon()
 }
@@ -376,4 +418,16 @@ func makeDateIcon(day int) (*walk.Icon, error) {
 		walk.TextCenter|walk.TextVCenter|walk.TextSingleLine)
 	c.Dispose()
 	return walk.NewIconFromBitmap(bmp)
+}
+
+// acceptLater closes a dialog with OK once the current event has been handled. walk performs
+// layouts requested during an event (e.g. by a label's SetText) when the event ends; closing the
+// dialog inside the event shuts its layout machinery first, and that deferred layout then panics
+// with "send on closed channel", taking the whole app down.
+func acceptLater(dlg *walk.Dialog) {
+	dlg.Synchronize(func() {
+		if !dlg.IsDisposed() {
+			dlg.Accept()
+		}
+	})
 }

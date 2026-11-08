@@ -120,7 +120,7 @@ func bufferText(tv *gtk.TextView) string {
 // editEvent shows the modal editor. occStart identifies the clicked occurrence of a series.
 func (a *App) editEvent(e *model.Event, occStart time.Time) {
 	isNew := e.ID == 0
-	cals, calIdx := a.svc.EditableCalendars(e.CalendarID)
+	cals, calIdx := a.svc.EditableCalendars(e)
 	if len(cals) == 0 {
 		a.message(a.win, gtk.MESSAGE_INFO, "Add a calendar in Settings first.")
 		return
@@ -146,19 +146,25 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 	saveCtx, _ := save.GetStyleContext()
 	saveCtx.AddClass("suggested-action")
 	dlg.SetDefaultResponse(gtk.RESPONSE_OK)
+	addClass(dlg, "settings-dialog")
 
+	// The title on top, the fields on a white card below.
+	body, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 10)
+	addClass(body, "settings-page")
+	body.SetMarginStart(18)
+	body.SetMarginEnd(18)
+	body.SetMarginTop(16)
+	body.SetMarginBottom(12)
 	grid, _ := gtk.GridNew()
-	grid.SetRowSpacing(8)
-	grid.SetColumnSpacing(10)
-	grid.SetMarginStart(14)
-	grid.SetMarginEnd(14)
-	grid.SetMarginTop(12)
-	grid.SetMarginBottom(12)
+	grid.SetRowSpacing(10)
+	grid.SetColumnSpacing(14)
+	addClass(grid, "settings-card")
 	row := 0
 	addRow := func(label string, w gtk.IWidget) {
 		l, _ := gtk.LabelNew(label)
-		l.SetXAlign(1)
+		l.SetXAlign(0)
 		l.SetYAlign(0.5)
+		addClass(l, "settings-field")
 		grid.Attach(l, 0, row, 1, 1)
 		grid.Attach(w, 1, row, 1, 1)
 		row++
@@ -166,20 +172,19 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 
 	title, _ := gtk.EntryNew()
 	title.SetText(e.Title)
+	title.SetPlaceholderText("Event title")
 	title.SetHExpand(true)
 	title.SetActivatesDefault(true)
-	addRow("Title:", title)
+	addClass(title, "event-title")
+	body.PackStart(title, false, false, 0)
+	body.PackStart(grid, true, true, 0)
 
 	calCombo, _ := gtk.ComboBoxTextNew()
 	for _, c := range cals {
-		label := c.Name
-		if c.IsLocal() {
-			label += "  (local)"
-		}
-		calCombo.AppendText(label)
+		calCombo.AppendText(c.Label())
 	}
 	calCombo.SetActive(calIdx)
-	addRow("Calendar:", calCombo)
+	addRow("Calendar", calCombo)
 
 	displayEnd := e.EndTime
 	if e.AllDay {
@@ -196,8 +201,8 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 		b.PackStart(t, false, false, 0)
 		return b
 	}
-	addRow("Start:", pair(startDate, startTime))
-	addRow("End:", pair(endDate, endTime))
+	addRow("Start", pair(startDate, startTime))
+	addRow("End", pair(endDate, endTime))
 
 	allDay, _ := gtk.CheckButtonNewWithLabel("All-day event")
 	allDay.SetActive(e.AllDay)
@@ -215,11 +220,11 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 		repeat.AppendText(l)
 	}
 	repeat.SetActive(repeatIdx)
-	addRow("Repeat:", repeat)
+	addRow("Repeat", repeat)
 
 	location, _ := gtk.EntryNew()
 	location.SetText(e.Location)
-	addRow("Location:", location)
+	addRow("Location", location)
 
 	urlBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
 	urlEntry, _ := gtk.EntryNew()
@@ -227,7 +232,7 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 	urlEntry.SetHExpand(true)
 	urlBox.PackStart(urlEntry, true, true, 0)
 	urlBox.PackStart(button("Open", func() { openURL(entryText(urlEntry)) }), false, false, 0)
-	addRow("Web link:", urlBox)
+	addRow("Web link", urlBox)
 
 	rems, _ := gtk.EntryNew()
 	if len(e.Reminders) > 0 {
@@ -238,7 +243,7 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 		rems.SetText(core.FormatReminders(mins))
 	}
 	rems.SetPlaceholderText("default: " + core.FormatReminders(a.store.Settings().DefaultReminderMinutes) + "  (e.g. 5, 15, 1h, 1d)")
-	addRow("Reminders:", rems)
+	addRow("Reminders", rems)
 
 	desc, _ := gtk.TextViewNew()
 	desc.SetWrapMode(gtk.WRAP_WORD_CHAR)
@@ -252,9 +257,10 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 	sw.SetVExpand(true)
 	sw.SetMinContentHeight(120)
 	sw.Add(desc)
-	descLabel, _ := gtk.LabelNew("Description:")
-	descLabel.SetXAlign(1)
+	descLabel, _ := gtk.LabelNew("Description")
+	descLabel.SetXAlign(0)
 	descLabel.SetYAlign(0)
+	addClass(descLabel, "settings-field")
 	grid.Attach(descLabel, 0, row, 1, 1)
 	grid.Attach(sw, 1, row, 1, 1)
 	row++
@@ -280,7 +286,7 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 	}
 
 	content, _ := dlg.GetContentArea()
-	content.PackStart(grid, true, true, 0)
+	content.PackStart(body, true, true, 0)
 	dlg.ShowAll()
 	updateLinks()
 	title.GrabFocus()
@@ -308,7 +314,7 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 				Rule:        core.RuleForChoice(repeat.GetActive(), customRule),
 			}
 			if i := calCombo.GetActive(); i >= 0 && i < len(cals) {
-				in.Calendar = cals[i]
+				in.Calendar = &cals[i]
 			}
 			if err := a.svc.ApplyEdit(e, in); err != nil {
 				a.message(dlg, gtk.MESSAGE_WARNING, "Cannot save: "+err.Error())

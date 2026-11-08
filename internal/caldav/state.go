@@ -18,8 +18,9 @@ import (
 const fullRefreshEvery = 24 * time.Hour
 
 // stateVersion invalidates caches written by builds that fetched collections differently
-// (2: partition hosts and plain calendar-data; earlier caches may hold tags of empty pulls).
-const stateVersion = 2
+// (2: partition hosts and plain calendar-data; earlier caches may hold tags of empty pulls;
+// 3: calendar display names).
+const stateVersion = 3
 
 // syncState is cached per source between syncs so an unchanged account costs a single PROPFIND.
 type syncState struct {
@@ -29,7 +30,9 @@ type syncState struct {
 	Endpoint     string            `json:"endpoint,omitempty"`
 	Home         string            `json:"home,omitempty"` // calendar home set ("" when the URL is the collection)
 	Collections  []string          `json:"collections,omitempty"`
-	CTags        map[string]string `json:"ctags,omitempty"` // collection path -> getctag / sync-token of the last pull
+	CTags        map[string]string `json:"ctags,omitempty"`  // collection path -> getctag / sync-token of the last pull
+	Names        map[string]string `json:"names,omitempty"`  // collection path -> display name
+	Hidden       []string          `json:"hidden,omitempty"` // calendars hidden at the last full pull
 	FullAt       time.Time         `json:"full_at,omitzero"`
 	BlockedUntil time.Time         `json:"blocked_until,omitzero"` // server rate limit in effect
 }
@@ -79,21 +82,21 @@ type ctagMultistatus struct {
 // fetchCTags returns a change tag per collection: getctag, or the RFC 6578 sync-token for servers
 // without it. Collections the server reports no tag for are absent and are always re-fetched.
 // One Depth:1 PROPFIND on the home set covers all collections; without a home set each one is asked.
-func fetchCTags(ctx context.Context, hc webdav.HTTPClient, endpoint string, st *syncState) (map[string]string, error) {
+func fetchCTags(ctx context.Context, hc webdav.HTTPClient, endpoint, home string, collections []string) (map[string]string, error) {
 	base, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, err
 	}
 	tags := map[string]string{}
-	if st.Home != "" {
-		err := propfindCTags(ctx, hc, base, st.Home, "1", tags)
+	if home != "" {
+		err := propfindCTags(ctx, hc, base, home, "1", tags)
 		var te *ThrottledError
 		if err == nil || errors.As(err, &te) {
 			return tags, err
 		}
 		log.Printf("caldav: home set PROPFIND failed, asking each collection: %v", err)
 	}
-	for _, p := range st.Collections {
+	for _, p := range collections {
 		if err := propfindCTags(ctx, hc, base, p, "0", tags); err != nil {
 			return nil, err
 		}

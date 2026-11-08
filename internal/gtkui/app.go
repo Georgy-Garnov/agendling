@@ -19,6 +19,7 @@ import (
 	"github.com/Georgy-Garnov/agendling/internal/appinfo"
 	"github.com/Georgy-Garnov/agendling/internal/caldav"
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/model"
 	"github.com/Georgy-Garnov/agendling/internal/scheduler"
 	"github.com/Georgy-Garnov/agendling/internal/storage"
 )
@@ -29,6 +30,7 @@ type App struct {
 
 	win      *gtk.Window
 	view     *calView
+	cals     *calPicker
 	title    *gtk.Label
 	status   *gtk.Label
 	viewBtns [4]*gtk.ToggleButton
@@ -72,6 +74,7 @@ func ui(f func()) {
 // Run builds the UI and blocks in the GTK main loop until Exit.
 func (a *App) Run(startMinimized bool, activations <-chan struct{}) error {
 	gtk.Init(nil)
+	installCSS()
 	a.svc.EnsureDefaultCalendar()
 
 	if err := a.buildMainWindow(); err != nil {
@@ -162,15 +165,19 @@ func (a *App) buildMainWindow() error {
 	}
 	hb.PackStart(modes)
 
+	hb.PackEnd(a.appMenu())
 	hb.PackEnd(iconButton("emblem-system-symbolic", "Settings", a.showSettings))
 	hb.PackEnd(iconButton("view-refresh-symbolic", "Sync now", a.syncNow))
 	newBtn := button("New event", func() { a.newEvent(time.Now().Truncate(time.Hour).Add(time.Hour), false) })
 	newCtx, _ := newBtn.GetStyleContext()
 	newCtx.AddClass("suggested-action")
 	hb.PackEnd(newBtn)
+	a.cals = newCalPicker(a)
+	hb.PackEnd(a.cals.button)
 
 	box, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
 	box.PackStart(a.view.build(), true, true, 0)
+	a.cals.refresh()
 	a.status, _ = gtk.LabelNew("Ready")
 	a.status.SetXAlign(0)
 	a.status.SetMarginStart(8)
@@ -190,10 +197,29 @@ func (a *App) buildMainWindow() error {
 		}
 		if a.hasTray {
 			a.hideMain()
-		} else {
+			return true
+		}
+		// No tray to come back from: minimizing may leave no way back (WSLg, bare window
+		// managers), so ask once whether to keep running for the reminders or quit.
+		choice := a.store.Settings().CloseWithoutTray
+		if choice == "" {
+			choice = a.askCloseWithoutTray()
+		}
+		switch choice {
+		case model.CloseQuit:
+			a.exit()
+		case model.CloseMinimize:
 			win.Iconify()
 		}
 		return true
+	})
+	win.Connect("key-press-event", func(_ *gtk.Window, ev *gdk.Event) bool {
+		k := gdk.EventKeyNewFromEvent(ev)
+		if k.State()&uint(gdk.CONTROL_MASK) != 0 && (k.KeyVal() == gdk.KEY_q || k.KeyVal() == gdk.KEY_Q) {
+			a.exit()
+			return true
+		}
+		return false
 	})
 	win.Connect("window-state-event", func(_ *gtk.Window, ev *gdk.Event) bool {
 		a.iconified = gdk.EventWindowStateNewFromEvent(ev).NewWindowState()&gdk.WINDOW_STATE_ICONIFIED != 0
@@ -221,6 +247,7 @@ func (a *App) onViewChanged() {
 }
 
 func (a *App) showMain() {
+	a.cals.refresh()
 	a.view.reload()
 	if p := a.hiddenAt; p != nil && !a.win.GetVisible() {
 		a.win.Move(p[0], p[1]) // window managers re-place a re-mapped window otherwise
@@ -303,6 +330,7 @@ func (a *App) requestRefresh() {
 		go a.svc.Sched.Reschedule()
 		ui(func() {
 			if a.win.IsVisible() {
+				a.cals.refresh()
 				a.view.reload()
 			}
 		})
@@ -346,6 +374,8 @@ func (a *App) onReminder(al scheduler.Alert) {
 // ---------- tray ----------
 
 // trayAvailable reports whether a StatusNotifierItem host (tray) is running.
+// trayAvailable reports whether tray icons are shown: a StatusNotifierWatcher runs and a host
+// (a panel or a desktop extension) has registered with it to display them.
 func trayAvailable() bool {
 	conn, err := dbus.SessionBus()
 	if err != nil {
@@ -353,7 +383,48 @@ func trayAvailable() bool {
 	}
 	var has bool
 	err = conn.BusObject().Call("org.freedesktop.DBus.NameHasOwner", 0, "org.kde.StatusNotifierWatcher").Store(&has)
-	return err == nil && has
+	if err != nil || !has {
+		return false
+	}
+	host, err := conn.Object("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher").
+		GetProperty("org.kde.StatusNotifierWatcher.IsStatusNotifierHostRegistered")
+	if err != nil {
+		return true // an older watcher without the property: assume it is shown
+	}
+	registered, ok := host.Value().(bool)
+	return !ok || registered
+}
+
+// appMenu is the header bar's ☰ menu: Settings, About and Quit, so the app can always be
+// closed, even without a tray.
+func (a *App) appMenu() *gtk.MenuButton {
+	mb, _ := gtk.MenuButtonNew()
+	mb.SetTooltipText("Menu")
+	if img, err := gtk.ImageNewFromIconName("open-menu-symbolic", gtk.ICON_SIZE_BUTTON); err == nil {
+		mb.SetImage(img)
+	}
+	menu, _ := gtk.MenuNew()
+	item := func(label string, f func()) {
+		mi, _ := gtk.MenuItemNewWithLabel(label)
+		mi.Connect("activate", func() { ui(f) })
+		menu.Append(mi)
+	}
+	item("Settings", a.showSettings)
+	item("About "+appinfo.Name, func() { a.showSettingsAt("about") })
+	sep, _ := gtk.SeparatorMenuItemNew()
+	menu.Append(sep)
+	quit, _ := gtk.MenuItemNew()
+	row, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 24)
+	ql, _ := gtk.LabelNew("Quit")
+	ql.SetXAlign(0)
+	row.PackStart(ql, true, true, 0)
+	row.PackEnd(markupLabel(`<span foreground="#8a9099">Ctrl+Q</span>`), false, false, 0)
+	quit.Add(row)
+	quit.Connect("activate", func() { ui(a.exit) })
+	menu.Append(quit)
+	menu.ShowAll()
+	mb.SetPopup(menu)
+	return mb
 }
 
 func (a *App) startTray() {
@@ -410,4 +481,49 @@ func (a *App) refreshIcon() {
 	if a.muteItem != nil { // tray is ready
 		systray.SetIcon(png)
 	}
+}
+
+// askCloseWithoutTray asks what closing the window should do when there is no tray; it returns
+// the choice ("" when cancelled) and stores it if asked to.
+func (a *App) askCloseWithoutTray() string {
+	dlg, _ := gtk.DialogNew()
+	dlg.SetTransientFor(a.win)
+	dlg.SetModal(true)
+	dlg.SetTitle(appinfo.Name)
+	addClass(dlg, "settings-dialog")
+	dlg.AddButton("Quit", 1)
+	keep, _ := dlg.AddButton("Keep running", 2)
+	addClass(keep, "suggested-action")
+	dlg.SetDefaultResponse(2)
+	body, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 10)
+	body.SetMarginStart(20)
+	body.SetMarginEnd(20)
+	body.SetMarginTop(16)
+	body.SetMarginBottom(12)
+	body.PackStart(markupLabel("<b>There is no system tray on this desktop</b>"), false, false, 0)
+	text := markupLabel("Agendling can keep running minimized so reminders still pop up, or quit. " +
+		"You can quit at any time with Quit in the ☰ menu or Ctrl+Q.")
+	text.SetMaxWidthChars(56)
+	body.PackStart(text, false, false, 0)
+	remember, _ := gtk.CheckButtonNewWithLabel("Don't ask again (change it in Settings → Startup)")
+	body.PackStart(remember, false, false, 4)
+	content, _ := dlg.GetContentArea()
+	content.PackStart(body, true, true, 0)
+	dlg.ShowAll()
+	resp := dlg.Run()
+	keepIt := remember.GetActive()
+	dlg.Destroy()
+	choice := ""
+	switch resp {
+	case 1:
+		choice = model.CloseQuit
+	case 2:
+		choice = model.CloseMinimize
+	}
+	if choice != "" && keepIt {
+		st := a.store.Settings()
+		st.CloseWithoutTray = choice
+		_ = a.store.SaveSettings(st)
+	}
+	return choice
 }

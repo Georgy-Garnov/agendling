@@ -37,6 +37,16 @@ func OpenURL(u string) {
 	win.ShellExecute(0, verb, target, nil, nil, win.SW_SHOWNORMAL)
 }
 
+// OpenFolder opens a local folder in Explorer.
+func OpenFolder(dir string) {
+	if dir == "" {
+		return
+	}
+	verb, _ := syscall.UTF16PtrFromString("open")
+	target, _ := syscall.UTF16PtrFromString(dir)
+	win.ShellExecute(0, verb, target, nil, nil, win.SW_SHOWNORMAL)
+}
+
 // SetTopmost pins a window above all others and tries to bring it to the foreground.
 func SetTopmost(f walk.Form) {
 	h := f.Handle()
