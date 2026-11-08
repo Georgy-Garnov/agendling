@@ -96,3 +96,23 @@ func TestRoundTrip(t *testing.T) {
 		t.Fatalf("round trip mismatch: %+v", got)
 	}
 }
+
+func TestCarriageReturnsAreEncoded(t *testing.T) {
+	start := time.Date(2026, 3, 1, 9, 30, 0, 0, time.UTC)
+	e := &model.Event{UID: NewUID(), Title: "Sprint\r\ndemo", Description: "one\rtwo\r\nthree", Location: "Room 2\r",
+		URL: "https://x.test/a\r\n", StartTime: start, EndTime: start.Add(time.Hour),
+		Reminders: []model.ReminderOffset{model.MinutesOffset(10)}}
+	var buf bytes.Buffer
+	if err := ical.NewEncoder(&buf).Encode(FromEvents([]*model.Event{e})); err != nil {
+		t.Fatal(err)
+	}
+	cal, err := ical.NewDecoder(&buf).Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ToEvents(cal, "", "")[0]
+	if got.Title != "Sprint\ndemo" || got.Description != "one\ntwo\nthree" || got.Location != "Room 2\n" ||
+		got.URL != "https://x.test/a" {
+		t.Fatalf("got %q, %q, %q, %q", got.Title, got.Description, got.Location, got.URL)
+	}
+}

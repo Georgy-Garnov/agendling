@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- An event whose title, description or location contains a carriage return (as some servers send
+  it) no longer fails to save or sync: line breaks of any kind are now written correctly.
+
 ## [0.4.0] - 2026-11-08
 
 ### Added

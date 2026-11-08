@@ -298,17 +298,17 @@ func fromEvent(e *model.Event, now time.Time) *ical.Component {
 		end = e.StartTime.AddDate(0, 0, 1)
 	}
 	setTime(p, ical.PropDateTimeEnd, end, e.AllDay, zone)
-	p.SetText(ical.PropSummary, e.Title)
+	setText(p, ical.PropSummary, e.Title)
 	if e.Description != "" {
-		p.SetText(ical.PropDescription, e.Description)
+		setText(p, ical.PropDescription, e.Description)
 	}
 	if e.Location != "" {
-		p.SetText(ical.PropLocation, e.Location)
+		setText(p, ical.PropLocation, e.Location)
 	}
-	if e.URL != "" {
+	if url := strings.TrimSpace(e.URL); url != "" {
 		u := ical.NewProp(ical.PropURL)
 		u.SetValueType(ical.ValueURI)
-		u.Value = e.URL
+		u.Value = url
 		p.Set(u)
 	}
 	if e.RRule != "" && e.RecurrenceID.IsZero() {
@@ -328,13 +328,21 @@ func fromEvent(e *model.Event, now time.Time) *ical.Component {
 	for _, r := range e.Reminders {
 		alarm := ical.NewComponent(ical.CompAlarm)
 		alarm.Props.SetText(ical.PropAction, "DISPLAY")
-		alarm.Props.SetText(ical.PropDescription, e.Title)
+		setText(alarm.Props, ical.PropDescription, e.Title)
 		trig := ical.NewProp(ical.PropTrigger)
 		trig.SetDuration(-time.Duration(r))
 		alarm.Props.Set(trig)
 		ev.Children = append(ev.Children, alarm)
 	}
 	return ev.Component
+}
+
+var lineBreaks = strings.NewReplacer("\r\n", "\n", "\r", "\n")
+
+// setText sets a TEXT property. Line breaks of any kind are written as an escaped newline: the
+// encoder escapes LF but rejects the whole object if a raw CR is left in a value.
+func setText(p ical.Props, name, text string) {
+	p.SetText(name, lineBreaks.Replace(text))
 }
 
 // writeZone returns the zone to serialize an event's times in, or nil for UTC/all-day.
