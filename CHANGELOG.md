@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-08
+
+### Fixed
+- Time zone definitions (VTIMEZONE) written to CalDAV servers carried `VALUE=TEXT` on
+  `TZOFFSETFROM` / `TZOFFSETTO`, which RFC 5545 does not allow. Strict clients such as vobject and
+  Home Assistant's calendar rejected the events. Events created or edited from now on are
+  standard-compliant; existing ones are fixed the next time they are saved in Agendling (#3, thanks
+  [@ciesinsk](https://github.com/ciesinsk)).
+
 ## [0.3.0] - 2026-11-03
 
 ### Added
@@ -62,7 +71,8 @@ All notable changes to this project are documented here. The format follows
 - Encrypted password storage (Windows DPAPI; AES-GCM with the desktop keyring on Linux).
 - Run at startup / start minimized.
 
-[Unreleased]: https://github.com/Georgy-Garnov/agendling/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Georgy-Garnov/agendling/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Georgy-Garnov/agendling/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Georgy-Garnov/agendling/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/Georgy-Garnov/agendling/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Georgy-Garnov/agendling/compare/v0.1.0...v0.2.0
