@@ -25,6 +25,9 @@ type calPicker struct {
 	cals    []core.Calendar
 }
 
+// pickerMaxHeight is the height of about ten calendar rows.
+const pickerMaxHeight = 480
+
 func newCalPicker(a *App) *calPicker {
 	p := &calPicker{app: a}
 	p.button, _ = gtk.MenuButtonNew()
@@ -72,7 +75,13 @@ func newCalPicker(a *App) *calPicker {
 			p.rebuild()
 		}
 	})
-	body.PackStart(p.list, false, false, 0)
+	// Up to about ten calendars show at once; with more the list scrolls.
+	scroll, _ := gtk.ScrolledWindowNew(nil, nil)
+	scroll.SetPolicy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
+	scroll.SetPropagateNaturalHeight(true)
+	scroll.SetMaxContentHeight(pickerMaxHeight)
+	scroll.Add(p.list)
+	body.PackStart(scroll, true, true, 0)
 	body.ShowAll()
 	p.popover.Add(body)
 	p.button.SetPopover(p.popover)

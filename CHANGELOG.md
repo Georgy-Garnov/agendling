@@ -16,6 +16,8 @@ All notable changes to this project are documented here. The format follows
   event, *Open day* switches to the day view.
 - **A modern scrollbar** in the calendar: a thin line that widens under the mouse, and the view can
   be dragged by pressing and holding an empty spot (or with the middle mouse button).
+- The **Calendars** dropdown shows up to ten calendars (fewer if the screen ends sooner) and
+  scrolls through the rest.
 - **Maximum sound length** in Settings → Sound: how long an alert sound may play, repeated or not
   (3 minutes by default, e.g. 15 seconds, or *No limit* to play until stopped). A long sound file
   played once now stops there too (#8, thanks [@ciesinsk](https://github.com/ciesinsk)).

@@ -16,12 +16,16 @@ import (
 
 // calPicker is the dropdown under the toolbar's Calendars button: one row per calendar with
 // its colour, the account it belongs to and an eye that shows whether it is visible. Clicking a
-// row toggles it; the dropdown stays open for more changes and closes when it loses focus.
+// row toggles it; the dropdown stays open for more changes and closes when it loses focus. With
+// many calendars it shows up to pickMaxRows (fewer if the screen ends sooner) and scrolls.
 type calPicker struct {
 	a        *App
 	dlg      *walk.Dialog
 	list     *painted
 	cals     []core.Calendar
+	rows     int // rows that fit
+	scroll   int // pixels
+	sb       overlayScrollbar
 	hover    int // row under the cursor, -1 none; -2 the "Show all" link
 	hovering bool
 }
@@ -31,6 +35,7 @@ const (
 	pickHeader  = 48
 	pickRow     = 52
 	pickPadding = 8
+	pickMaxRows = 10
 )
 
 var dwmSetWindowAttribute = syscall.NewLazyDLL("dwmapi.dll").NewProc("DwmSetWindowAttribute")
@@ -57,7 +62,7 @@ func (a *App) toggleCalPicker() {
 	if time.Since(a.pickerClosed) < 300*time.Millisecond {
 		return // the click that took focus away from the dropdown also lands on the button
 	}
-	p := &calPicker{a: a, hover: -1}
+	p := &calPicker{a: a, hover: -1, rows: pickMaxRows}
 	if err := p.open(); err != nil {
 		return
 	}
@@ -67,6 +72,7 @@ func (a *App) toggleCalPicker() {
 func (p *calPicker) open() error {
 	a := p.a
 	p.cals = a.svc.Calendars()
+	p.rows = p.fittingRows()
 	dlg, err := walk.NewDialog(a.mw)
 	if err != nil {
 		return err
@@ -81,16 +87,40 @@ func (p *calPicker) open() error {
 		dlg.Dispose()
 		return err
 	}
+	p.sb.w = p.list
 	p.list.SetCursor(walk.CursorHand())
 	p.list.MouseMove().Attach(func(x, y int, _ walk.MouseButton) {
-		if h := p.hitTest(x, y); h != p.hover {
+		pt := walk.Point{X: x, Y: y}
+		if p.sb.drag {
+			p.setScroll(p.sb.dragTo(y))
+			return
+		}
+		h := p.hitTest(x, y)
+		if p.sb.contains(pt) {
+			h = -1
+		}
+		if h != p.hover {
 			p.hover = h
 			p.list.Invalidate()
 		}
+		cursor := walk.CursorHand()
+		if p.sb.contains(pt) {
+			cursor = walk.CursorArrow()
+		}
+		p.list.SetCursor(cursor)
+		p.sb.move(pt)
 		trackHover(p.list, &p.hovering, func() { p.hover = -1; p.list.Invalidate() })
 	})
+	p.list.MouseDown().Attach(func(x, y int, b walk.MouseButton) {
+		if pt := (walk.Point{X: x, Y: y}); b == walk.LeftButton && p.sb.contains(pt) {
+			p.setScroll(p.sb.press(pt))
+		}
+	})
+	p.list.MouseWheel().Attach(func(_, _ int, b walk.MouseButton) {
+		p.setScroll(float64(p.scroll) - float64(walk.MouseWheelEventDelta(b))/120*float64(scale(p.list, pickRow)))
+	})
 	p.list.MouseUp().Attach(func(x, y int, b walk.MouseButton) {
-		if b != walk.LeftButton {
+		if b != walk.LeftButton || p.sb.release() || p.sb.contains(walk.Point{X: x, Y: y}) {
 			return
 		}
 		switch h := p.hitTest(x, y); {
@@ -129,7 +159,36 @@ func (p *calPicker) open() error {
 }
 
 func (p *calPicker) size() walk.Size {
-	return walk.Size{Width: pickWidth, Height: pickHeader + len(p.cals)*pickRow + pickPadding}
+	return walk.Size{Width: pickWidth, Height: pickHeader + min(len(p.cals), p.rows)*pickRow + pickPadding}
+}
+
+// fittingRows is how many rows fit between the Calendars button and the bottom of the screen,
+// at most pickMaxRows.
+func (p *calPicker) fittingRows() int {
+	var rc win.RECT
+	win.GetWindowRect(p.a.calBtn.Handle(), &rc)
+	mi := win.MONITORINFO{}
+	mi.CbSize = uint32(unsafe.Sizeof(mi))
+	if !win.GetMonitorInfo(win.MonitorFromWindow(p.a.mw.Handle(), win.MONITOR_DEFAULTTONEAREST), &mi) {
+		return pickMaxRows
+	}
+	room := int(mi.RcWork.Bottom - rc.Bottom)
+	row := scale(p.a.mw, pickRow)
+	fit := (room - scale(p.a.mw, 6+pickHeader+pickPadding+8)) / row
+	return max(3, min(pickMaxRows, fit))
+}
+
+// setScroll scrolls the list to pos (pixels), within its range.
+func (p *calPicker) setScroll(pos float64) {
+	s := p.scrollState()
+	s.Pos = pos
+	p.scroll = int(s.Clamped().Pos)
+	p.list.Invalidate()
+}
+
+func (p *calPicker) scrollState() core.Scroll {
+	row := scale(p.list, pickRow)
+	return core.Scroll{Pos: float64(p.scroll), Content: float64(len(p.cals) * row), View: float64(min(len(p.cals), p.rows) * row)}.Clamped()
 }
 
 // place puts the dropdown under the Calendars button, right edges aligned.
@@ -181,10 +240,10 @@ func (p *calPicker) hitTest(x, y int) int {
 		return -2
 	}
 	top := scale(p.list, pickHeader)
-	if y < top {
+	if y < top || y >= top+min(len(p.cals), p.rows)*scale(p.list, pickRow) {
 		return -1
 	}
-	if i := (y - top) / scale(p.list, pickRow); i < len(p.cals) {
+	if i := (y - top + p.scroll) / scale(p.list, pickRow); i < len(p.cals) {
 		return i
 	}
 	return -1
@@ -196,21 +255,19 @@ func (p *calPicker) paint(cv *walk.Canvas, b walk.Rectangle) {
 	cv.FillRectanglePixels(bg, b)
 	bg.Dispose()
 
-	header := walk.Rectangle{X: px(16), Y: 0, Width: b.Width - px(32), Height: px(pickHeader)}
-	drawText(cv, "Show calendars", uiFont(11, true), flText, header, textLeftMiddle)
-	if p.anyHidden() {
-		color := flAccent
-		if p.hover == -2 {
-			color = flAccentHover
-		}
-		drawText(cv, "Show all", uiFont(10, false), color, p.showAllRect(b), walk.TextRight|walk.TextVCenter|walk.TextSingleLine)
+	s := p.scrollState()
+	p.scroll = int(s.Pos)
+	listTop, listBottom := px(pickHeader), px(pickHeader)+int(s.View)
+	p.sb.set(s, b.Width, listTop, listBottom)
+	eyeShift := 0 // keep the eyes clear of the scrollbar
+	if s.Scrollable() {
+		eyeShift = px(10)
 	}
-	line := solid(flLine)
-	cv.FillRectanglePixels(line, walk.Rectangle{X: px(12), Y: px(pickHeader) - px(1), Width: b.Width - px(24), Height: px(1)})
-	line.Dispose()
-
 	for i, c := range p.cals {
-		r := walk.Rectangle{X: px(6), Y: px(pickHeader) + i*px(pickRow) + px(3), Width: b.Width - px(12), Height: px(pickRow) - px(6)}
+		r := walk.Rectangle{X: px(6), Y: listTop + i*px(pickRow) - p.scroll + px(3), Width: b.Width - px(12), Height: px(pickRow) - px(6)}
+		if r.Y+r.Height < listTop || r.Y > listBottom {
+			continue
+		}
 		if i == p.hover {
 			fillRound(cv, flHover, r, px(6))
 		}
@@ -233,14 +290,33 @@ func (p *calPicker) paint(cv *walk.Canvas, b walk.Rectangle) {
 			nameColor, eye, eyeColor = flText2, glyphHide, walk.RGB(0x9a, 0xa0, 0xa8)
 		}
 		textX := r.X + px(36)
-		textW := r.Width - px(36) - px(44)
+		textW := r.Width - px(36) - px(44) - eyeShift
 		drawText(cv, c.Name, uiFont(10, false), nameColor,
 			walk.Rectangle{X: textX, Y: r.Y + px(5), Width: textW, Height: px(20)}, textLeftMiddle)
 		drawText(cv, calendarOwner(c), uiFont(9, false), flText2,
 			walk.Rectangle{X: textX, Y: r.Y + px(24), Width: textW, Height: px(17)}, textLeftMiddle)
 		drawText(cv, eye, iconFont(12), eyeColor,
-			walk.Rectangle{X: r.X + r.Width - px(40), Y: r.Y, Width: px(32), Height: r.Height}, walk.TextCenter|walk.TextVCenter|walk.TextSingleLine)
+			walk.Rectangle{X: r.X + r.Width - px(40) - eyeShift, Y: r.Y, Width: px(32), Height: r.Height}, walk.TextCenter|walk.TextVCenter|walk.TextSingleLine)
 	}
+
+	// The header and the bottom margin over the scrolled rows.
+	bg = solid(flSurface)
+	cv.FillRectanglePixels(bg, walk.Rectangle{X: 0, Y: 0, Width: b.Width, Height: listTop})
+	cv.FillRectanglePixels(bg, walk.Rectangle{X: 0, Y: listBottom, Width: b.Width, Height: b.Height - listBottom})
+	bg.Dispose()
+	header := walk.Rectangle{X: px(16), Y: 0, Width: b.Width - px(32), Height: px(pickHeader)}
+	drawText(cv, "Show calendars", uiFont(11, true), flText, header, textLeftMiddle)
+	if p.anyHidden() {
+		color := flAccent
+		if p.hover == -2 {
+			color = flAccentHover
+		}
+		drawText(cv, "Show all", uiFont(10, false), color, p.showAllRect(b), walk.TextRight|walk.TextVCenter|walk.TextSingleLine)
+	}
+	line := solid(flLine)
+	cv.FillRectanglePixels(line, walk.Rectangle{X: px(12), Y: px(pickHeader) - px(1), Width: b.Width - px(24), Height: px(1)})
+	line.Dispose()
+	p.sb.paint(cv, false)
 }
 
 // calendarOwner is the second line of a calendar row: its account, or what kind of calendar it is.
