@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Event titles with line breaks (common in synced invitations) are shown on one line in the
+  calendar grid instead of being clipped (#7, thanks [@ciesinsk](https://github.com/ciesinsk)).
+
 ## [0.3.2] - 2026-11-08
 
 ### Fixed
