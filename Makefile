@@ -14,7 +14,7 @@ MAXGLIBC := 2.35
 WINBIN   := bin/$(APP).exe
 LINUXBIN := bin/$(APP)-linux-amd64
 
-.PHONY: help build windows linux deb glibc-check winres test vet notices clean
+.PHONY: help build windows linux deb glibc-check winres uishots test vet notices clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -42,6 +42,11 @@ glibc-check: ## Fail if the Linux binary needs a glibc newer than MAXGLIBC
 winres: ## Generate Windows resources (icon, manifest, version info) from cmd/agendling/winres
 	$(WINRES) make --in cmd/$(APP)/winres/winres.json --out cmd/$(APP)/rsrc --arch amd64 \
 		--product-version $(WINVER) --file-version $(WINVER)
+
+# Screenshot tour of the Windows UI with demo data; run bin/uishots.exe DIR on Windows.
+uishots: ## Build bin/uishots.exe (Windows UI screenshot tour, with the app's manifest)
+	$(WINRES) make --in cmd/$(APP)/winres/winres.json --out tools/uishots/rsrc --arch amd64
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags uitour -o bin/uishots.exe ./tools/uishots
 
 test: ## Run unit and integration tests
 	go test ./internal/...
