@@ -59,6 +59,7 @@ type CalView struct {
 
 	mode    viewMode
 	anchor  time.Time
+	zoom    int
 	scrollY int // time-grid scroll offset in pixels
 
 	occs []model.Occurrence
@@ -93,10 +94,27 @@ type gridGeom struct {
 func newCalView(app *App) *CalView {
 	v := &CalView{app: app, mode: ViewWeek, anchor: time.Now(),
 		brushes: map[walk.Color]*walk.SolidColorBrush{}, pens: map[walk.Color]*walk.CosmeticPen{}}
-	v.font, _ = walk.NewFont("Segoe UI", 9, 0)
-	v.bold, _ = walk.NewFont("Segoe UI", 9, walk.FontBold)
-	v.small, _ = walk.NewFont("Segoe UI", 8, 0)
+	v.setZoom(core.CalendarZoom(app.store.Settings().CalendarZoomPercent))
 	return v
+}
+
+func (v *CalView) setZoom(percent int) {
+	if v.zoom > 0 {
+		// Preserve the visible time when the height of an hour changes.
+		v.scrollY = int(math.Round(float64(v.scrollY) * float64(percent) / float64(v.zoom)))
+	}
+	v.zoom = percent
+	pointSize := func(base int) int {
+		return int(math.Round(float64(base*percent) / 100))
+	}
+	v.font, _ = walk.NewFont("Segoe UI", pointSize(9), 0)
+	v.bold, _ = walk.NewFont("Segoe UI", pointSize(9), walk.FontBold)
+	v.small, _ = walk.NewFont("Segoe UI", pointSize(8), 0)
+	v.grid.valid = false
+	v.hits = v.hits[:0]
+	if v.cw != nil {
+		v.cw.Invalidate()
+	}
 }
 
 func (v *CalView) attach(cw *walk.CustomWidget) {
@@ -199,7 +217,7 @@ func (v *CalView) paint(c *walk.Canvas, _ walk.Rectangle) error {
 func (v *CalView) render(c *walk.Canvas, b walk.Rectangle) error {
 	c.FillRectanglePixels(v.brush(colBackground), b)
 	v.hits = v.hits[:0]
-	scale := float64(c.DPI()) / 96
+	scale := float64(c.DPI()) / 96 * float64(v.zoom) / 100
 	px := func(n int) int { return int(math.Round(float64(n) * scale)) }
 
 	from, _ := v.Range()
@@ -437,7 +455,7 @@ func (v *CalView) paintCells(c *walk.Canvas, b walk.Rectangle, px func(int) int,
 				}
 				y += lineH
 			}
-			if rest := len(items) - show; rest > 0 {
+			if rest := len(items) - show; rest > 0 && y+lineH-px(2) <= y1 {
 				r := walk.Rectangle{X: x0 + px(6), Y: y, Width: cell.Width - px(8), Height: lineH - px(2)}
 				v.text(c, fmt.Sprintf("+%d more", rest), v.small, colAccent, r, walk.TextSingleLine|walk.TextVCenter)
 				v.hits = append(v.hits, hit{kind: hitDay, r: r, day: d})

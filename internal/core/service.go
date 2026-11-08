@@ -48,6 +48,12 @@ func (s *Service) Stop() {
 	s.Sched.Stop()
 }
 
+func (s *Service) SaveCalendarZoom(percent int) error {
+	settings := s.Store.Settings()
+	settings.CalendarZoomPercent = CalendarZoom(percent)
+	return s.Store.SaveSettings(settings)
+}
+
 // EnsureDefaultCalendar creates a local "Personal" calendar on first run.
 func (s *Service) EnsureDefaultCalendar() {
 	srcs, err := s.Store.Sources()

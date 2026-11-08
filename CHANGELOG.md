@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Calendar zoom from 80% to 160% on Windows and Linux, with a reset button and a saved zoom level.
 - **Maximum sound length** in Settings → Sound: how long an alert sound may play, repeated or not
   (3 minutes by default, e.g. 15 seconds, or *No limit* to play until stopped). A long sound file
   played once now stops there too (#8, thanks [@ciesinsk](https://github.com/ciesinsk)).

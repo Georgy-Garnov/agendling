@@ -107,6 +107,7 @@ type Occurrence struct {
 }
 
 type AppSettings struct {
+	CalendarZoomPercent    int
 	DefaultReminderMinutes []int
 	CustomSoundPath        string
 	SnoozeIntervalMinutes  int
