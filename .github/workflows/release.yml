@@ -119,8 +119,17 @@ jobs:
           (cd pkg/linux && tar czf "../../dist/agendling-${GITHUB_REF_NAME}-linux-amd64.tar.gz" *)
           cp artifacts/deb/*.deb dist/
           (cd dist && sha256sum * > SHA256SUMS.txt)
+      - name: Release notes from the changelog
+        # GitHub's generated notes list merged pull requests only; the changelog covers every
+        # change. The generated list (pull requests and contributors) is appended below it.
+        run: |
+          set -euo pipefail
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" 'index($0, "## [" v "]") == 1 {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md > notes.md
+          grep -q '[^[:space:]]' notes.md || { echo "CHANGELOG.md has no section for $v"; exit 1; }
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          body_path: notes.md
           generate_release_notes: true
