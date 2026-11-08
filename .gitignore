@@ -7,3 +7,4 @@
 /.local/
 /cmd/agendling/rsrc_windows_*.syso
 /tools/uishots/*.syso
+/tools/demoapp/*.syso

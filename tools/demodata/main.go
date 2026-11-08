@@ -36,7 +36,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := demo.Seed(store, acc); err != nil {
+	if n, _ := store.Sources(); len(n) > 0 {
+		log.Printf("demo data already seeded")
+	} else if err := demo.Seed(store, acc); err != nil {
 		log.Fatal(err)
 	}
 	store.Close()
