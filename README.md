@@ -143,6 +143,9 @@ calendar without deleting it.
 Double-clicking the all-day strip creates an all-day event. Double-clicking a month cell creates
 an event at 09:00 that day.
 
+Use **− / percentage / +** above the calendar to zoom from 80% to 160%. Click the percentage to
+reset to 100%. The selected level is saved and restored on restart.
+
 ### Events
 
 The editor covers title, calendar, start and end, all-day, repeat (daily, weekdays, weekly,

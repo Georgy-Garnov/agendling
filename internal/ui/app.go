@@ -66,6 +66,24 @@ func (a *App) Run(startMinimized bool) error {
 	a.svc.EnsureDefaultCalendar()
 
 	var cw *walk.CustomWidget
+	var zoomOut, zoomReset, zoomIn *walk.PushButton
+	updateZoom := func() {
+		zoomReset.SetText(fmt.Sprintf("%d%%", a.view.zoom))
+		zoomOut.SetEnabled(a.view.zoom > core.CalendarZoomMin)
+		zoomIn.SetEnabled(a.view.zoom < core.CalendarZoomMax)
+	}
+	changeZoom := func(percent int) {
+		percent = core.CalendarZoom(percent)
+		if percent == a.view.zoom {
+			return
+		}
+		if err := a.svc.SaveCalendarZoom(percent); err != nil {
+			a.setStatus("Failed to save calendar zoom: " + err.Error())
+			return
+		}
+		a.view.setZoom(percent)
+		updateZoom()
+	}
 	viewButton := func(m viewMode) PushButton {
 		return PushButton{
 			AssignTo:  &a.viewBtns[m],
@@ -100,6 +118,18 @@ func (a *App) Run(startMinimized bool) error {
 					PushButton{Text: "Settings", MaxSize: Size{Width: 80}, OnClicked: a.showSettings},
 				},
 			},
+			Composite{
+				Layout: HBox{Margins: Margins{Left: 8, Right: 8, Bottom: 4}},
+				Children: []Widget{
+					HSpacer{},
+					PushButton{AssignTo: &zoomOut, Text: "−", ToolTipText: "Zoom out",
+						MaxSize: Size{Width: 32}, OnClicked: func() { changeZoom(a.view.zoom - core.CalendarZoomStep) }},
+					PushButton{AssignTo: &zoomReset, Text: fmt.Sprintf("%d%%", a.view.zoom), ToolTipText: "Reset calendar zoom",
+						MaxSize: Size{Width: 56}, OnClicked: func() { changeZoom(core.CalendarZoomDefault) }},
+					PushButton{AssignTo: &zoomIn, Text: "+", ToolTipText: "Zoom in",
+						MaxSize: Size{Width: 32}, OnClicked: func() { changeZoom(a.view.zoom + core.CalendarZoomStep) }},
+				},
+			},
 			CustomWidget{
 				AssignTo:            &cw,
 				PaintPixels:         func(c *walk.Canvas, r walk.Rectangle) error { return a.view.paint(c, r) },
@@ -116,6 +146,7 @@ func (a *App) Run(startMinimized bool) error {
 		return fmt.Errorf("create main window: %w", err)
 	}
 	a.view.attach(cw)
+	updateZoom()
 
 	// Close (X) hides to tray instead of exiting.
 	a.mw.Closing().Attach(func(canceled *bool, reason walk.CloseReason) {

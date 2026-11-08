@@ -53,6 +53,7 @@ type calView struct {
 
 	mode     core.ViewMode
 	anchor   time.Time
+	zoom     int
 	scrollY  float64
 	scrolled bool
 
@@ -66,10 +67,18 @@ type calView struct {
 
 func newCalView(app *App) *calView {
 	return &calView{app: app, mode: core.ViewWeek, anchor: time.Now(),
+		zoom:  core.CalendarZoom(app.store.Settings().CalendarZoomPercent),
 		font:  pango.FontDescriptionFromString("Sans 9"),
 		bold:  pango.FontDescriptionFromString("Sans Bold 9"),
 		small: pango.FontDescriptionFromString("Sans 8"),
 	}
+}
+
+func (v *calView) setZoom(percent int) {
+	v.zoom = percent
+	v.grid.valid = false
+	v.hits = v.hits[:0]
+	v.area.QueueDraw()
 }
 
 func (v *calView) build() *gtk.DrawingArea {
@@ -205,6 +214,11 @@ func (v *calView) text(cr *cairo.Context, s string, f *pango.FontDescription, c 
 // ---------- rendering ----------
 
 func (v *calView) render(cr *cairo.Context, w, h float64) {
+	scale := float64(v.zoom) / 100
+	cr.Save()
+	defer cr.Restore()
+	cr.Scale(scale, scale)
+	w, h = w/scale, h/scale
 	fill(cr, rect{0, 0, w, h}, core.ColBackground)
 	v.hits = v.hits[:0]
 	from, _ := core.ViewRange(v.mode, v.anchor)
@@ -412,7 +426,7 @@ func (v *calView) paintCells(cr *cairo.Context, w, h float64, from time.Time, we
 				}
 				y += lineH
 			}
-			if rest := len(items) - show; rest > 0 {
+			if rest := len(items) - show; rest > 0 && y+lineH-2 <= y1 {
 				r := rect{x0 + 6, y, cell.w - 8, lineH - 2}
 				v.text(cr, fmt.Sprintf("+%d more", rest), v.small, core.ColAccent, r, single|vcenter)
 				v.hits = append(v.hits, hit{kind: hitDay, r: r, day: d})
@@ -430,7 +444,9 @@ func (v *calView) onButton(ev *gdk.EventButton) {
 	if ev.Button() != gdk.BUTTON_PRIMARY {
 		return
 	}
-	x, y := ev.X(), ev.Y()
+	// Hit regions and the time grid use the unscaled drawing coordinates.
+	scale := float64(v.zoom) / 100
+	x, y := ev.X()/scale, ev.Y()/scale
 	double := ev.Type() == gdk.EVENT_2BUTTON_PRESS
 	if ev.Type() != gdk.EVENT_BUTTON_PRESS && !double {
 		return

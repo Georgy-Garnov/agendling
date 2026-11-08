@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Calendar zoom from 80% to 160% on Windows and Linux, with a reset button and a saved zoom level.
+
 ## [0.3.2] - 2026-11-08
 
 ### Fixed

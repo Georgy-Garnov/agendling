@@ -170,6 +170,42 @@ func (a *App) buildMainWindow() error {
 	hb.PackEnd(newBtn)
 
 	box, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
+	zoomBar, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 0)
+	zoomBar.SetHAlign(gtk.ALIGN_END)
+	zoomBar.SetMarginEnd(8)
+	zoomBar.SetMarginTop(4)
+	zoomBar.SetMarginBottom(4)
+	zoomCtx, _ := zoomBar.GetStyleContext()
+	zoomCtx.AddClass("linked")
+	var zoomOut, zoomReset, zoomIn *gtk.Button
+	updateZoom := func() {
+		zoomReset.SetLabel(fmt.Sprintf("%d%%", a.view.zoom))
+		zoomOut.SetSensitive(a.view.zoom > core.CalendarZoomMin)
+		zoomIn.SetSensitive(a.view.zoom < core.CalendarZoomMax)
+	}
+	changeZoom := func(percent int) {
+		percent = core.CalendarZoom(percent)
+		if percent == a.view.zoom {
+			return
+		}
+		if err := a.svc.SaveCalendarZoom(percent); err != nil {
+			a.setStatus("Failed to save calendar zoom: " + err.Error())
+			return
+		}
+		a.view.setZoom(percent)
+		updateZoom()
+	}
+	zoomOut = button("−", func() { changeZoom(a.view.zoom - core.CalendarZoomStep) })
+	zoomOut.SetTooltipText("Zoom out")
+	zoomReset = button("", func() { changeZoom(core.CalendarZoomDefault) })
+	zoomReset.SetTooltipText("Reset calendar zoom")
+	zoomIn = button("+", func() { changeZoom(a.view.zoom + core.CalendarZoomStep) })
+	zoomIn.SetTooltipText("Zoom in")
+	zoomBar.Add(zoomOut)
+	zoomBar.Add(zoomReset)
+	zoomBar.Add(zoomIn)
+	updateZoom()
+	box.PackStart(zoomBar, false, false, 0)
 	box.PackStart(a.view.build(), true, true, 0)
 	a.status, _ = gtk.LabelNew("Ready")
 	a.status.SetXAlign(0)
