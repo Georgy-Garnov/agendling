@@ -42,12 +42,13 @@ func TestScrollThumb(t *testing.T) {
 }
 
 func TestScrollZoomKeepsAnchor(t *testing.T) {
-	// 10:00 at the mouse, 100 px into the view, stays under the mouse at 150%.
+	// 10:00 is under the mouse, 100 px into the view; after zooming to 150% it still is.
 	hourH := 48.0
-	s := Scroll{Pos: 9 * hourH, Content: 24 * hourH, View: 400}
-	anchor := 10*hourH - s.Pos
-	pos := s.Zoomed(1.5, anchor)
-	if got := (pos + anchor) / (hourH * 1.5); math.Abs(got-10) > 1e-9 {
+	before := Scroll{Pos: 10*hourH - 100, Content: 24 * hourH, View: 400}
+	frac := before.AnchorFrac(100)
+	after := Scroll{Content: 24 * hourH * 1.5, View: 400}
+	after.Pos = after.PosForAnchor(frac, 100)
+	if got := (after.Pos + 100) / (hourH * 1.5); math.Abs(got-10) > 1e-9 {
 		t.Fatalf("hour under the mouse after zoom: %v", got)
 	}
 }

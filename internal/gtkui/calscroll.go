@@ -74,7 +74,7 @@ func (v *calView) setScrollArea(top, content, w, h float64) {
 		if z.y >= 0 {
 			at = z.y/v.scale - top
 		}
-		s.Pos = z.frac*content - at
+		s.Pos = s.PosForAnchor(z.frac, at)
 		v.anchor0 = nil
 	}
 	s = s.Clamped()
@@ -190,6 +190,19 @@ func (v *calView) onMotion(x, y float64) {
 	case v.pan.pressed && (math.Abs(x-v.pan.x) > 4 || math.Abs(y-v.pan.y) > 4):
 		v.pan.pressed = false // moved before the long press: not a drag of the view
 	}
+	cursor := ""
+	if !v.inZone(x, y) {
+		for _, h := range v.hits {
+			if h.r.contains(x/v.scale, y/v.scale) {
+				cursor = "pointer"
+				break
+			}
+		}
+	}
+	if cursor != v.cursor {
+		v.cursor = cursor
+		v.setCursor(cursor)
+	}
 	hover := v.inZone(x, y)
 	t := v.sbThumb(true)
 	thumbHover := hover && y >= t.y && y < t.y+t.h
@@ -203,6 +216,7 @@ func (v *calView) onRelease() {
 	if v.sb.drag || v.pan.active {
 		v.sb.drag, v.pan.active = false, false
 		v.setCursor("")
+		v.cursor = ""
 		v.area.QueueDraw()
 	}
 	v.pan.pressed = false
@@ -251,7 +265,7 @@ func (v *calView) zoomAt(percent int, y float64) {
 		if y >= 0 {
 			at = (y - v.sb.top) / v.scale
 		}
-		v.anchor0 = &zoomAnchor{frac: (s.Pos + at) / s.Content, y: y}
+		v.anchor0 = &zoomAnchor{frac: s.AnchorFrac(at), y: y}
 	}
 	v.zoom = percent
 	v.grid.valid = false

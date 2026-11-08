@@ -31,7 +31,8 @@ type hitKind int
 
 const (
 	hitEvent hitKind = iota
-	hitDay           // day header / "+N more": drill down into the day
+	hitDay           // day header: drill down into the day
+	hitMore          // "+N more": the day's events in a popup over the cell
 )
 
 type hit struct {
@@ -39,6 +40,7 @@ type hit struct {
 	r    walk.Rectangle
 	occ  model.Occurrence
 	day  time.Time
+	cell walk.Rectangle // hitMore: the day's cell
 }
 
 var (
@@ -63,8 +65,11 @@ type CalView struct {
 	zoom       int // percent
 	scrollY    int // time-grid scroll offset in pixels
 	cellScroll int // month/2-week grid scroll offset in pixels, when zoomed in
-	sb         calScrollbar
+	sb         overlayScrollbar
 	pan        calPan
+	zoomAnchor *zoomAnchor
+	cursor     walk.Cursor
+	dayPop     *dayPopup
 
 	occs []model.Occurrence
 	cals map[int64]*model.CalendarSource
@@ -107,6 +112,7 @@ func newCalView(app *App) *CalView {
 
 func (v *CalView) attach(cw *walk.CustomWidget) {
 	v.cw = cw
+	v.sb.w = cw
 	cw.SetPaintMode(walk.PaintBuffered)
 	cw.SetInvalidatesOnResize(true)
 	cw.MouseDown().Attach(v.onMouseDown)
@@ -214,7 +220,7 @@ func (v *CalView) render(c *walk.Canvas, b walk.Rectangle) error {
 	default:
 		v.paintCells(c, b, px, from, 6)
 	}
-	v.paintScrollbar(c)
+	v.sb.paint(c, v.pan.active)
 	return nil
 }
 
@@ -366,13 +372,14 @@ func (v *CalView) paintAllDayBar(c *walk.Canvas, px func(int) int, r walk.Rectan
 func (v *CalView) paintCells(c *walk.Canvas, b walk.Rectangle, px func(int) int, from time.Time, weeks int) {
 	headerH := px(24)
 	cellW := float64(b.Width) / 7
-	// The weeks fill the window up to 100%; zoomed in further they grow and scroll.
-	cellH := float64(b.Height-headerH) / float64(weeks) * max(1, float64(v.zoom)/100)
+	lineH := px(18)
+	// The weeks fill the window, but a day always has room for its date and three events: when
+	// the zoom makes that taller than the window, the weeks scroll.
+	cellH := max(float64(b.Height-headerH)/float64(weeks), float64(px(22)+3*lineH+px(4)))
 	v.setScrollArea(b, headerH, int(math.Round(cellH*float64(weeks))))
 	off := v.cellScroll
 	now := time.Now()
 	_, anchorMonth, _ := v.anchor.Date()
-	lineH := px(18)
 
 	for w := 0; w < weeks; w++ {
 		if top, bottom := headerH+int(math.Round(float64(w)*cellH))-off, headerH+int(math.Round(float64(w+1)*cellH))-off; bottom < headerH || top > b.Height {
@@ -438,7 +445,7 @@ func (v *CalView) paintCells(c *walk.Canvas, b walk.Rectangle, px func(int) int,
 			if rest := len(items) - show; rest > 0 && y+lineH-px(2) <= y1 {
 				r := walk.Rectangle{X: x0 + px(6), Y: y, Width: cell.Width - px(8), Height: lineH - px(2)}
 				v.text(c, fmt.Sprintf("+%d more", rest), v.small, colAccent, r, walk.TextSingleLine|walk.TextVCenter)
-				v.hits = append(v.hits, hit{kind: hitDay, r: r, day: d})
+				v.hits = append(v.hits, hit{kind: hitMore, r: r, day: d, cell: cell})
 			}
 		}
 	}
@@ -496,6 +503,9 @@ func (v *CalView) onMouseDown(x, y int, button walk.MouseButton) {
 				day := h.day
 				v.cw.Synchronize(func() { v.GoTo(day, ViewDay) })
 			}
+		case hitMore:
+			day, cell := h.day, h.cell
+			v.cw.Synchronize(func() { v.showDayPopup(day, cell) })
 		}
 		return
 	}

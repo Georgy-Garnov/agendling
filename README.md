@@ -160,7 +160,8 @@ alerts.
 | Switch view | **Day / Week / 2 Weeks / Month** | D / W / M |
 | Scroll (hours; weeks of a zoomed-in month) | mouse wheel, the scrollbar, or press and hold an empty spot, then drag | ↑ ↓ |
 | Zoom the calendar | Ctrl + wheel, or **− 100% +** in the status bar | Ctrl + Plus / Minus, Ctrl + 0 |
-| Open a day | click the day header or "+N more" | |
+| Open a day | click the day header, or **Open day** in the "+N more" popup | |
+| See all events of a busy day | click "+N more" in the month or 2-week view | |
 | Edit an event | click it | |
 | New event | **+ New event**, or double-click an empty slot | N |
 
@@ -170,8 +171,9 @@ an event at 09:00 that day.
 **Zoom** (80% to 160%) scales the calendar grid — text, the height of an hour, the weeks of a
 month — while the rest of the window stays as it is. Zooming with the wheel keeps what is under the
 mouse in place; a click on the percentage goes back to 100%, and the level is kept across
-restarts. Zoomed in, the month and 2-week views scroll instead of squeezing the weeks into the
-window. The scrollbar is a thin line at the right edge that widens under the mouse, Windows 11
+restarts. In the month and 2-week views the weeks fill the window but always leave room for a
+day's date and three events; when the zoom makes that taller than the window, they scroll.
+"+N more" opens a popup over the day with all its events. The scrollbar is a thin line at the right edge that widens under the mouse, Windows 11
 style; a press-and-hold on an empty spot (or the middle mouse button) drags the view.
 
 ### Events

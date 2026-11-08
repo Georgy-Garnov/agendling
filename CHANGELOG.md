@@ -9,8 +9,11 @@ All notable changes to this project are documented here. The format follows
 ### Added
 - **Calendar zoom** from 80% to 160%: **− 100% +** in the status bar, Ctrl + mouse wheel (keeping what
   is under the mouse in place), Ctrl + Plus / Minus and Ctrl + 0 to reset; the level is kept across
-  restarts (#6, thanks [@ciesinsk](https://github.com/ciesinsk)). Zoomed in, the month and 2-week
-  views scroll instead of squeezing the weeks into the window.
+  restarts (#6, thanks [@ciesinsk](https://github.com/ciesinsk)). In the month and 2-week views a
+  day always keeps room for its date and three events; when the zoom makes that taller than the
+  window, the weeks scroll.
+- **"+N more" shows the hidden events:** a popup over the day lists all of them; a click opens an
+  event, *Open day* switches to the day view.
 - **A modern scrollbar** in the calendar: a thin line that widens under the mouse, and the view can
   be dragged by pressing and holding an empty spot (or with the middle mouse button).
 - **Maximum sound length** in Settings → Sound: how long an alert sound may play, repeated or not

@@ -25,6 +25,7 @@ const appCSS = `
 .status-bar label { font-size: 9pt; }
 .zoom-control button { min-height: 0; min-width: 0; padding: 2px 8px; border-radius: 4px; }
 .zoom-control button label { font-size: 9pt; }
+.day-popover-link label { color: #0f6cbd; }
 .settings-field { color: #5f6670; }
 .settings-card switch:checked { background-color: #0f6cbd; border-color: #0f6cbd; }
 .event-title { font-size: 14pt; }

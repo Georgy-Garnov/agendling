@@ -27,7 +27,8 @@ type hitKind int
 
 const (
 	hitEvent hitKind = iota
-	hitDay
+	hitDay           // day header: drill down into the day
+	hitMore          // "+N more": the day's events in a popover
 )
 
 type hit struct {
@@ -62,6 +63,7 @@ type calView struct {
 	sb         calScrollbar
 	pan        calPan
 	anchor0    *zoomAnchor
+	cursor     string  // the pointer's cursor name; "" = default
 	zoomAcc    float64 // Ctrl+scroll not yet turned into a zoom step
 
 	occs []model.Occurrence
@@ -382,8 +384,9 @@ func (v *calView) paintAllDayBar(cr *cairo.Context, r rect, o model.Occurrence) 
 func (v *calView) paintCells(cr *cairo.Context, w, h float64, from time.Time, weeks int) {
 	const headerH, lineH = 24.0, 18.0
 	cellW := w / 7
-	// The weeks fill the window up to 100%; zoomed in further they grow and scroll.
-	cellH := (h - headerH) / float64(weeks) * math.Max(1, v.scale)
+	// The weeks fill the window, but a day always has room for its date and three events: when
+	// the zoom makes that taller than the window, the weeks scroll.
+	cellH := math.Max((h-headerH)/float64(weeks), 22+3*lineH+4)
 	v.setScrollArea(headerH, cellH*float64(weeks), w, h)
 	off := v.cellScroll
 	now := time.Now()
@@ -445,7 +448,7 @@ func (v *calView) paintCells(cr *cairo.Context, w, h float64, from time.Time, we
 			if rest := len(items) - show; rest > 0 && y+lineH-2 <= y1 {
 				r := rect{x0 + 6, y, cell.w - 8, lineH - 2}
 				v.text(cr, fmt.Sprintf("+%d more", rest), v.small, core.ColAccent, r, single|vcenter)
-				v.hits = append(v.hits, hit{kind: hitDay, r: r, day: d})
+				v.hits = append(v.hits, hit{kind: hitMore, r: r, day: d})
 			}
 		}
 	}
@@ -502,6 +505,9 @@ func (v *calView) onButton(ev *gdk.EventButton) {
 				day := h.day
 				ui(func() { v.goTo(day, core.ViewDay) })
 			}
+		case hitMore:
+			day, r := h.day, h.r
+			ui(func() { v.showDayPopover(day, r) })
 		}
 		return
 	}

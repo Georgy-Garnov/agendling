@@ -66,8 +66,14 @@ func (s Scroll) PosForThumb(off, track, minLen float64) float64 {
 	return max(0, min(off/(track-length), 1)) * s.Max()
 }
 
-// Zoomed is the position after the content is scaled by ratio, keeping the content under
-// anchor (an offset in the viewport, e.g. the mouse) where it is.
-func (s Scroll) Zoomed(ratio, anchor float64) float64 {
-	return (s.Pos+anchor)*ratio - anchor
+// AnchorFrac is where in the content (0..1) the point at offset at of the viewport is.
+func (s Scroll) AnchorFrac(at float64) float64 {
+	if s.Content <= 0 {
+		return 0
+	}
+	return (s.Pos + at) / s.Content
 }
+
+// PosForAnchor is the position that brings the content at frac (see AnchorFrac) to offset at
+// of the viewport: after a zoom, what was under the mouse stays under it.
+func (s Scroll) PosForAnchor(frac, at float64) float64 { return frac*s.Content - at }
