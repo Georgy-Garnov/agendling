@@ -173,13 +173,50 @@ func RunTour(store *storage.Store, dir string) error {
 			ui(func() { d.Cancel() })
 		}
 
-		// Settings: every section, the search, and the account editor.
+		// Settings: every section, the search, and the account editor. Two sounds of their own
+		// show the file rows on the Sound page.
+		ui(func() {
+			st := store.Settings()
+			st.TypeSounds.NewEvent = model.Sound{Custom: true, Path: `C:\Windows\Media\Alarm01.wav`}
+			for _, t := range a.svc.SoundTargets() {
+				if t.Name == "Family" {
+					st.CalendarSounds = map[string]model.AlertSounds{t.Key: {Reminder: model.Sound{Custom: true}}}
+				}
+			}
+			fail(store.SaveSettings(st))
+		})
 		a.mw.Synchronize(a.showSettings) // modal: the steps below run in its message loop
 		s := <-settings
 		time.Sleep(700 * time.Millisecond)
 		for _, key := range []string{"calendars", "reminders", "sound", "alerts", "startup", "about"} {
 			ui(func() { s.selectPage(key) })
 			shot(s.dlg.Handle(), "settings-"+key)
+			if key == "sound" { // and the rest of the page
+				for i := 2; i <= 3; i++ {
+					ui(func() { win.SendMessage(s.scroll.Handle(), win.WM_VSCROLL, win.SB_PAGEDOWN, 0) })
+					shot(s.dlg.Handle(), fmt.Sprintf("settings-sound-%d", i))
+				}
+				toTop := func() { // walk's ScrollView handles line and page steps only
+					for range 10 {
+						win.SendMessage(s.scroll.Handle(), win.WM_VSCROLL, win.SB_PAGEUP, 0)
+					}
+				}
+				ui(toTop)
+				// Switching on a sound reveals its file row; No limit greys out the length.
+				click := func(w walk.Window) {
+					win.SendMessage(w.Handle(), win.WM_LBUTTONDOWN, win.MK_LBUTTON, 0)
+					win.SendMessage(w.Handle(), win.WM_LBUTTONUP, 0, 0)
+				}
+				ui(func() { click(s.noLimit); click(s.typeReminder.on) })
+				ui(func() {
+					for range 4 {
+						win.SendMessage(s.scroll.Handle(), win.WM_VSCROLL, win.SB_LINEDOWN, 0)
+					}
+				})
+				shot(s.dlg.Handle(), "settings-sound-toggled")
+				ui(func() { click(s.noLimit); click(s.typeReminder.on) })
+				ui(toTop)
+			}
 		}
 		ui(func() { s.search.SetText("snooze") })
 		shot(s.dlg.Handle(), "settings-search")
