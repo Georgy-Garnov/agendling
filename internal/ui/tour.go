@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -17,6 +18,7 @@ import (
 	"github.com/lxn/walk"
 	"github.com/lxn/win"
 
+	"github.com/Georgy-Garnov/agendling/internal/caldav"
 	"github.com/Georgy-Garnov/agendling/internal/core"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 	"github.com/Georgy-Garnov/agendling/internal/scheduler"
@@ -267,6 +269,22 @@ func RunTour(store *storage.Store, dir string) error {
 			d := <-dialogs
 			time.Sleep(900 * time.Millisecond)
 			shot(d.Handle(), "account")
+			ui(func() { d.Cancel() })
+
+			// A NAS with a self-signed certificate: the question, and the account trusting it.
+			info := caldav.CertInfo{Subject: "nas.local", Issuer: "nas.local", SelfSigned: true,
+				NotAfter: time.Date(2027, 5, 1, 0, 0, 0, 0, time.Local), Fingerprint: caldav.FormatFingerprint(strings.Repeat("4F9AC2", 10) + "4F9A")}
+			s.dlg.Synchronize(func() { a.confirmCertificate(s.dlg, info) })
+			d = <-dialogs
+			time.Sleep(700 * time.Millisecond)
+			shot(d.Handle(), "certificate")
+			ui(func() { d.Cancel() })
+			nas := *cloud
+			nas.TrustedCert = strings.Repeat("4F9AC2", 10) + "4F9A"
+			s.dlg.Synchronize(func() { s.a.editSource(s.dlg, &nas) })
+			d = <-dialogs
+			time.Sleep(900 * time.Millisecond)
+			shot(d.Handle(), "account-trusted")
 			ui(func() { d.Cancel() })
 		}
 		ui(func() { s.dlg.Cancel() })
