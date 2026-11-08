@@ -293,7 +293,7 @@ func discover(ctx context.Context, hc webdav.HTTPClient, src *model.CalendarSour
 
 	var d discovery
 	var cals []caldav.Calendar
-	principal, perr := c.FindCurrentUserPrincipal(ctx)
+	principal, perr := findCurrentUserPrincipal(ctx, hc, u)
 	if perr == nil {
 		var home *url.URL
 		if home, perr = findHomeSet(ctx, hc, u, principal); perr == nil {
