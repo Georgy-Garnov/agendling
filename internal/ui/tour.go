@@ -107,6 +107,17 @@ func RunTour(store *storage.Store, dir string) error {
 		ui(func() { a.view.SetMode(ViewMonth) })
 		time.Sleep(time.Second) // the month grid repaints after the reload
 		shot(a.mw.Handle(), "month")
+		// Zoomed in: the month grid scrolls, and the scrollbar widens under the mouse.
+		ui(func() { a.setZoom(140, -1) })
+		shot(a.mw.Handle(), "zoom-month")
+		ui(func() { a.view.scrollBy(10000) })
+		shot(a.mw.Handle(), "zoom-month-end")
+		ui(func() { a.view.SetMode(ViewWeek) })
+		shot(a.mw.Handle(), "zoom-week")
+		ui(func() { a.view.sb.hover = true; a.view.cw.Invalidate() })
+		shot(a.mw.Handle(), "zoom-week-scrollbar")
+		ui(func() { a.view.sb.hover = false; a.setZoom(core.CalendarZoomDefault, -1) })
+		ui(func() { a.view.SetMode(ViewMonth) })
 		ui(func() { a.view.SetMode(ViewWeek) })
 
 		// The calendar dropdown over the window, with one calendar hidden.
