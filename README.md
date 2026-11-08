@@ -264,7 +264,9 @@ Agendling uses standard CalDAV (RFC 4791) with basic authentication. Most provid
   Synology: *Control Panel → Security → Certificate*) before trusting it.
 
 **How sync works:** local changes are pushed first, then events from 6 months back to 2 years
-ahead are pulled. Local edits waiting to be pushed are never overwritten by a pull. Network or
+ahead are pulled. Local edits waiting to be pushed are never overwritten by a pull. Every event belongs to its own
+calendar: if a calendar is deleted on the server, its unsent changes stay on this computer and
+sync says so — they are never moved into another calendar. Network or
 server errors appear in the status bar and as a one-time notification; the app keeps working
 offline.
 

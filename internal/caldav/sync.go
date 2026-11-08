@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"path"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -390,6 +391,7 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 	hc := newHTTPClient(src)
 	now := time.Now()
 	st := loadState(store, src.ID)
+	prevNames := st.Names // a calendar deleted on the server is still named in messages
 	hidden := hiddenSet(src.HiddenCollections)
 	// A changed calendar selection needs a full pull, which also drops events of hidden calendars.
 	wasHidden := hiddenSet(st.Hidden)
@@ -419,10 +421,20 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 	}
 	src.CalendarPath = writePathFor(visible, src.CalendarPath)
 
-	pushErr := push(ctx, c, store, src)
+	pushErr := push(ctx, c, store, src, st.Collections, func(coll string) string {
+		for _, names := range []map[string]string{st.Names, prevNames} {
+			if n := names[coll]; n != "" {
+				return n
+			}
+		}
+		return path.Base(coll)
+	})
 	var te *ThrottledError
 	if errors.As(pushErr, &te) {
 		return nil, pushErr
+	}
+	if errors.Is(pushErr, errCollectionMissing) {
+		st.FullAt = time.Time{} // a calendar vanished since discovery: rediscover next time
 	}
 
 	tags, err := fetchCTags(ctx, hc, st.endpoint(src.URL), st.Home, visible)
@@ -532,11 +544,33 @@ func newUpcoming(events []*model.Event, known map[string]bool, now time.Time) []
 	return res
 }
 
-func push(ctx context.Context, c *caldav.Client, store *storage.Store, src *model.CalendarSource) error {
+// errCollectionMissing marks a write to a calendar that is not on the server (any more).
+var errCollectionMissing = errors.New("calendar not found on the server")
+
+// CalendarGoneError reports local changes to a calendar that was deleted on the server: they
+// are kept, never redirected to another calendar.
+type CalendarGoneError struct {
+	Calendar string
+	Pending  int
+}
+
+func (e *CalendarGoneError) Error() string {
+	return fmt.Sprintf("calendar %q is no longer on the server; %d unsent change(s) to it are kept on this computer",
+		e.Calendar, e.Pending)
+}
+
+// push uploads local changes. known are the account's calendars as last discovered; changes to
+// a calendar not among them are held back (see CalendarGoneError).
+func push(ctx context.Context, c *caldav.Client, store *storage.Store, src *model.CalendarSource, known []string, nameOf func(string) string) error {
 	pending, err := store.PendingEvents(src.ID)
 	if err != nil {
 		return err
 	}
+	exists := map[string]bool{}
+	for _, k := range known {
+		exists[cleanDir(k)] = true
+	}
+	gone := map[string]int{}
 	done := map[string]bool{}
 	var errs []error
 	for _, p := range pending {
@@ -549,11 +583,50 @@ func push(ctx context.Context, c *caldav.Client, store *storage.Store, src *mode
 			errs = append(errs, err)
 			continue
 		}
+		if coll := seriesCollection(series); coll != "" && len(exists) > 0 && !exists[coll] {
+			if seriesDeleted(series) {
+				// Deleted here, and its calendar is gone from the server too: nothing left to do.
+				if err := store.PurgeUID(src.ID, p.UID); err != nil {
+					errs = append(errs, err)
+				}
+				continue
+			}
+			gone[coll]++
+			continue
+		}
 		if err := pushSeries(ctx, c, store, src, series); err != nil {
 			errs = append(errs, fmt.Errorf("push %q: %w", p.Title, err))
 		}
 	}
+	colls := make([]string, 0, len(gone))
+	for coll := range gone {
+		colls = append(colls, coll)
+	}
+	sort.Strings(colls)
+	for _, coll := range colls {
+		errs = append(errs, &CalendarGoneError{Calendar: nameOf(coll), Pending: gone[coll]})
+	}
 	return errors.Join(errs...)
+}
+
+// seriesCollection is the calendar an event series is stored in, "" when it was never uploaded
+// (it then goes to the account's write calendar).
+func seriesCollection(series []*model.Event) string {
+	for _, ev := range series {
+		if ev.Href != "" {
+			return CollectionOf(ev.Href)
+		}
+	}
+	return ""
+}
+
+func seriesDeleted(series []*model.Event) bool {
+	for _, ev := range series {
+		if ev.RecurrenceID.IsZero() {
+			return ev.Deleted
+		}
+	}
+	return false
 }
 
 func pushSeries(ctx context.Context, c *caldav.Client, store *storage.Store, src *model.CalendarSource, series []*model.Event) error {
@@ -609,6 +682,9 @@ func pushSeries(ctx context.Context, c *caldav.Client, store *storage.Store, src
 	}
 	obj, err := c.PutCalendarObject(ctx, href, ics.FromEvents(live))
 	if err != nil {
+		if isNotFound(err) || strings.Contains(err.Error(), "409") {
+			return fmt.Errorf("%w: %w", errCollectionMissing, err)
+		}
 		return err
 	}
 	if err := removeStale(); err != nil {

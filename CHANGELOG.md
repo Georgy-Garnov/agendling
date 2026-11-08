@@ -37,6 +37,9 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 - **Synology CalDAV**: discovery kept failing because the trailing slash of the configured URL
   was dropped when looking up the user's principal (#5, thanks [@ciesinsk](https://github.com/ciesinsk)).
+- Changes to a calendar that was deleted on the server stay on this computer with a clear message
+  ("calendar … is no longer on the server") instead of a raw server error, and the calendar list
+  is refreshed right away rather than at the next daily refresh.
 - Windows: resizing the window left trails of the status bar's size grip; the status bar is now
   drawn by the app, like the rest of the window.
 - An event whose title, description or location contains a carriage return (as some servers send
