@@ -226,12 +226,9 @@ func (a *App) showSettingsAt(page string) {
 	remPage.PackStart(card("Snooze interval, minutes", "How long Snooze postpones a reminder.", snooze, false), false, false, 0)
 
 	// ----- Sound -----
-	soundBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
-	sound, _ := gtk.EntryNew()
-	sound.SetText(saved.CustomSoundPath)
-	sound.SetPlaceholderText("built-in chime")
-	soundBox.PackStart(sound, true, true, 0)
-	soundBox.PackStart(button("Browse…", func() {
+	var soundEntries []*gtk.Entry   // connected to updateApply below
+	var soundSwitches []*gtk.Switch // likewise
+	browseSound := func(entry *gtk.Entry) {
 		fc, err := gtk.FileChooserDialogNewWith2Buttons("Choose alert sound", dlg, gtk.FILE_CHOOSER_ACTION_OPEN,
 			"Cancel", gtk.RESPONSE_CANCEL, "Open", gtk.RESPONSE_ACCEPT)
 		if err != nil {
@@ -244,27 +241,174 @@ func (a *App) showSettingsAt(page string) {
 		}
 		fc.AddFilter(filter)
 		if fc.Run() == gtk.RESPONSE_ACCEPT {
-			sound.SetText(fc.GetFilename())
+			entry.SetText(fc.GetFilename())
 		}
 		fc.Destroy()
-	}), false, false, 0)
-	soundBox.PackStart(button("Clear", func() { sound.SetText("") }), false, false, 0)
-	testBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
-	testBox.PackStart(button("▶ Test", func() {
-		path := strings.TrimSpace(entryText(sound))
+	}
+	testSound := func(path string) {
+		path = strings.TrimSpace(path)
 		go func() {
 			if err := a.svc.Audio.Play(path); err != nil {
 				ui(func() { a.message(dlg, gtk.MESSAGE_WARNING, "Sound: "+err.Error()) })
 			}
 		}()
-	}), false, false, 0)
+	}
+	soundBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
+	sound, _ := gtk.EntryNew()
+	sound.SetText(saved.CustomSoundPath)
+	sound.SetPlaceholderText("built-in chime")
+	soundBox.PackStart(sound, true, true, 0)
+	soundBox.PackStart(button("Browse…", func() { browseSound(sound) }), false, false, 0)
+	soundBox.PackStart(button("Clear", func() { sound.SetText("") }), false, false, 0)
+	testBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
+	testBox.PackStart(button("▶ Test", func() { testSound(entryText(sound)) }), false, false, 0)
 	testBox.PackStart(button("■ Stop", a.svc.Audio.Stop), false, false, 0)
 	loop, _ := gtk.SwitchNew()
 	loop.SetActive(saved.LoopSound)
+
+	limit := saved.SoundLimitSeconds
+	if limit <= 0 {
+		limit = model.DefaultSettings().SoundLimitSeconds
+	}
+	limitMin, _ := gtk.SpinButtonNewWithRange(0, 999, 1)
+	limitMin.SetValue(float64(limit / 60))
+	limitSec, _ := gtk.SpinButtonNewWithRange(0, 59, 1)
+	limitSec.SetValue(float64(limit % 60))
+	noLimit, _ := gtk.SwitchNew()
+	noLimit.SetActive(saved.SoundLimitSeconds <= 0)
+	syncLimit := func() {
+		limitMin.SetSensitive(!noLimit.GetActive())
+		limitSec.SetSensitive(!noLimit.GetActive())
+	}
+	noLimit.Connect("notify::active", syncLimit)
+	syncLimit()
+	limitBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
+	unit := func(text string) *gtk.Label {
+		l, _ := gtk.LabelNew(text)
+		addClass(l, "settings-field")
+		return l
+	}
+	limitBox.PackStart(limitMin, false, false, 0)
+	limitBox.PackStart(unit("min"), false, false, 0)
+	limitBox.PackStart(limitSec, false, false, 0)
+	limitBox.PackStart(unit("sec"), false, false, 0)
+	noLimitLabel, _ := gtk.LabelNew("No limit")
+	noLimitLabel.SetMarginStart(12)
+	limitBox.PackStart(noLimitLabel, false, false, 0)
+	noLimit.SetVAlign(gtk.ALIGN_CENTER)
+	limitBox.PackStart(noLimit, false, false, 0)
+
 	soundPage := newPage("sound")
-	soundPage.PackStart(card("Alert sound", "An MP3 or WAV file; leave empty for the built-in chime.", soundBox, true), false, false, 0)
+	soundPage.PackStart(card("Alert sound", "Used for every alert unless a kind of alert or a calendar below has a "+
+		"sound of its own. An MP3 or WAV file; leave empty for the built-in chime.", soundBox, true), false, false, 0)
 	soundPage.PackStart(card("Try it", "Plays the chosen sound once.", testBox, false), false, false, 0)
-	soundPage.PackStart(card("Repeat until stopped", "Keep playing until you press Stop Sound (at most 15 seconds).", loop, false), false, false, 0)
+	soundPage.PackStart(card("Repeat until stopped", "Keep playing the sound until you press Stop Sound or the "+
+		"maximum length below is reached.", loop, false), false, false, 0)
+	soundPage.PackStart(card("Maximum length", "How long a sound may play.", limitBox, false), false, false, 0)
+
+	// A "custom sound" switch and the file row it reveals.
+	type soundOption struct {
+		on   *gtk.Switch
+		path *gtk.Entry
+	}
+	collectOption := func(o soundOption) model.Sound {
+		return core.CleanSound(model.Sound{Custom: o.on.GetActive(), Path: entryText(o.path)})
+	}
+	// addOption puts the switch at the right of line and the file row below it in card.
+	addOption := func(line, card *gtk.Box, snd model.Sound) soundOption {
+		o := soundOption{}
+		o.on, _ = gtk.SwitchNew()
+		o.on.SetActive(snd.Custom)
+		o.on.SetVAlign(gtk.ALIGN_CENTER)
+		line.PackEnd(o.on, false, false, 0)
+		row, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
+		row.SetMarginStart(28)
+		o.path, _ = gtk.EntryNew()
+		o.path.SetText(snd.Path)
+		o.path.SetPlaceholderText("built-in chime")
+		row.PackStart(o.path, true, true, 0)
+		row.PackStart(button("Browse…", func() { browseSound(o.path) }), false, false, 0)
+		row.PackStart(button("▶", func() { testSound(entryText(o.path)) }), false, false, 0)
+		row.PackStart(button("■", a.svc.Audio.Stop), false, false, 0)
+		card.PackStart(row, false, false, 0)
+		// Shown with the switch only: keep the dialog's ShowAll from revealing it.
+		row.ShowAll()
+		row.SetNoShowAll(true)
+		row.SetVisible(snd.Custom)
+		o.on.Connect("notify::active", func() { row.SetVisible(o.on.GetActive()) })
+		soundEntries = append(soundEntries, o.path)
+		soundSwitches = append(soundSwitches, o.on)
+		return o
+	}
+	section := func(title, desc string) {
+		b, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 2)
+		b.SetMarginTop(14)
+		l, _ := gtk.LabelNew(title)
+		l.SetXAlign(0)
+		addClass(l, "settings-section")
+		b.PackStart(l, false, false, 0)
+		b.PackStart(caption(desc), false, false, 0)
+		soundPage.PackStart(b, false, false, 0)
+	}
+	// soundCard is a card with a name, a description and, for calendars, a colour dot; it returns
+	// the card and its top line.
+	soundCard := func(name, desc, color string) (*gtk.Box, *gtk.Box) {
+		c, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 8)
+		addClass(c, "settings-card")
+		top, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 12)
+		if color != "" {
+			dot := markupLabel(`<span foreground="` + color + `" size="large">●</span>`)
+			dot.SetLineWrap(false)
+			top.PackStart(dot, false, false, 0)
+		}
+		text, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 2)
+		l, _ := gtk.LabelNew("")
+		l.SetXAlign(0)
+		if color != "" {
+			l.SetMarkup("<b>" + glib.MarkupEscapeText(name) + "</b>")
+		} else {
+			l.SetText(name)
+		}
+		text.PackStart(l, false, false, 0)
+		text.PackStart(caption(desc), false, false, 0)
+		top.PackStart(text, true, true, 0)
+		c.PackStart(top, false, false, 0)
+		soundPage.PackStart(c, false, false, 0)
+		return c, top
+	}
+	optionLine := func(c *gtk.Box, name string) *gtk.Box {
+		line, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 12)
+		line.SetMarginStart(28)
+		l, _ := gtk.LabelNew(name)
+		l.SetXAlign(0)
+		line.PackStart(l, true, true, 0)
+		c.PackStart(line, false, false, 0)
+		return line
+	}
+
+	section("By kind of alert", "Switch on a sound of its own for reminders or for new meetings; otherwise they use "+
+		"the alert sound above.")
+	c, top := soundCard("Meeting reminders", "Before an event starts.", "")
+	typeReminder := addOption(top, c, saved.TypeSounds.Reminder)
+	c, top = soundCard("New meetings", "When a sync brings in a new upcoming event, e.g. an invitation.", "")
+	typeNewEvent := addOption(top, c, saved.TypeSounds.NewEvent)
+
+	section("By calendar", "A calendar's own sound comes first, then its account's, then the sounds above.")
+	type calendarSounds struct {
+		key                string
+		reminder, newEvent soundOption
+	}
+	var calSounds []calendarSounds
+	for _, t := range a.svc.SoundTargets() {
+		c, _ := soundCard(t.Name, t.Detail, t.Source.Color)
+		if t.Child {
+			c.SetMarginStart(28)
+		}
+		snd := saved.CalendarSounds[t.Key]
+		calSounds = append(calSounds, calendarSounds{key: t.Key,
+			reminder: addOption(optionLine(c, "Reminder sound"), c, snd.Reminder),
+			newEvent: addOption(optionLine(c, "New meeting sound"), c, snd.NewEvent)})
+	}
 
 	// ----- New meetings -----
 	newAlerts, _ := gtk.SwitchNew()
@@ -458,6 +602,22 @@ func (a *App) showSettingsAt(page string) {
 		st.SnoozeIntervalMinutes = snooze.GetValueAsInt()
 		st.CustomSoundPath = strings.TrimSpace(entryText(sound))
 		st.LoopSound = loop.GetActive()
+		st.SoundLimitSeconds = 0
+		if !noLimit.GetActive() {
+			st.SoundLimitSeconds = limitMin.GetValueAsInt()*60 + limitSec.GetValueAsInt()
+			if st.SoundLimitSeconds <= 0 {
+				return st, fmt.Errorf("the maximum sound length must be at least one second, or switch on No limit")
+			}
+		}
+		st.TypeSounds = model.AlertSounds{Reminder: collectOption(typeReminder), NewEvent: collectOption(typeNewEvent)}
+		sounds := map[string]model.AlertSounds{}
+		for k, v := range st.CalendarSounds { // keeps sounds of calendars not listed, e.g. unsubscribed ones
+			sounds[k] = v
+		}
+		for _, cs := range calSounds {
+			sounds[cs.key] = model.AlertSounds{Reminder: collectOption(cs.reminder), NewEvent: collectOption(cs.newEvent)}
+		}
+		st.CalendarSounds = core.CleanCalendarSounds(sounds)
 		st.NewEventAlertsOff = !newAlerts.GetActive()
 		st.RunAtStartup = startup.GetActive()
 		st.StartMinimized = minimized.GetActive()
@@ -469,11 +629,13 @@ func (a *App) showSettingsAt(page string) {
 		return err != nil || !core.SameEditableSettings(st, saved)
 	}
 	updateApply := func() { applyBtn.SetSensitive(dirty()) }
-	for _, e := range []*gtk.Entry{rems, sound} {
+	for _, e := range append([]*gtk.Entry{rems, sound}, soundEntries...) {
 		e.Connect("changed", updateApply)
 	}
-	snooze.Connect("value-changed", updateApply)
-	for _, sw := range []*gtk.Switch{loop, newAlerts, startup, minimized} {
+	for _, sp := range []*gtk.SpinButton{snooze, limitMin, limitSec} {
+		sp.Connect("value-changed", updateApply)
+	}
+	for _, sw := range append([]*gtk.Switch{loop, noLimit, newAlerts, startup, minimized}, soundSwitches...) {
 		sw.Connect("notify::active", updateApply)
 	}
 	closeChoice.Connect("changed", updateApply)

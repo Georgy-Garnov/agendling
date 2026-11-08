@@ -25,8 +25,7 @@ import (
 const (
 	sampleRate = 48000
 	// Small device buffer: Stop() is audible within ~40 ms.
-	deviceBuffer  = 40 * time.Millisecond
-	alertDuration = 15 * time.Second
+	deviceBuffer = 40 * time.Millisecond
 )
 
 type Manager struct {
@@ -61,20 +60,27 @@ func (m *Manager) Play(path string) error {
 	return m.play(path, nil)
 }
 
-// PlayAlert starts a notification sound for at most 15 seconds.
-func (m *Manager) PlayAlert(path string, loop bool) error {
+// PlayAlert starts a notification sound: repeated while loop is set, otherwise played once, and
+// either way stopped after limit (0 = no limit: it plays until Stop).
+func (m *Manager) PlayAlert(path string, loop bool, limit time.Duration) error {
 	return m.play(path, func(src beep.StreamSeekCloser, rate beep.SampleRate) beep.Streamer {
-		return alertStream(src, rate, loop)
+		return alertStream(src, rate, loop, limit)
 	})
 }
 
 // alertStream limits both repeated chimes and long single-play sound files.
-func alertStream(src beep.StreamSeeker, rate beep.SampleRate, loop bool) beep.Streamer {
-	limit := rate.N(alertDuration)
-	if loop {
-		return &looper{s: src, limit: limit}
+func alertStream(src beep.StreamSeeker, rate beep.SampleRate, loop bool, limit time.Duration) beep.Streamer {
+	frames := -1
+	if limit > 0 {
+		frames = rate.N(limit)
 	}
-	return beep.Take(limit, src)
+	switch {
+	case loop:
+		return &looper{s: src, limit: frames}
+	case frames >= 0:
+		return beep.Take(frames, src)
+	}
+	return src
 }
 
 func (m *Manager) play(path string, wrap func(beep.StreamSeekCloser, beep.SampleRate) beep.Streamer) error {
@@ -238,18 +244,18 @@ func (st *stream) Close() {
 	}
 }
 
-// looper restarts the source at EOF until `limit` samples have been produced.
+// looper restarts the source at EOF until `limit` samples have been produced, or forever.
 type looper struct {
 	s     beep.StreamSeeker
-	limit int
+	limit int // frames; negative = no limit
 	done  int
 }
 
 func (l *looper) Stream(samples [][2]float64) (int, bool) {
 	total := 0
-	for total < len(samples) && l.done < l.limit {
+	for total < len(samples) && (l.limit < 0 || l.done < l.limit) {
 		want := len(samples) - total
-		if rem := l.limit - l.done; want > rem {
+		if rem := l.limit - l.done; l.limit >= 0 && want > rem {
 			want = rem
 		}
 		n, ok := l.s.Stream(samples[total : total+want])

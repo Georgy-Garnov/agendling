@@ -200,8 +200,17 @@ unticked in the main window. You can turn them off in **Settings → New meeting
 ### Sound
 
 In **Settings → Sound** choose an MP3 or WAV file, or leave the field empty for the
-built-in chime. **▶ Test** plays it and **■ Stop** stops it. Notification sounds stop after at most
-15 seconds, even when *Repeat until stopped* is enabled. The popup stays open.
+built-in chime. **▶ Test** plays it and **■ Stop** stops it.
+
+- **Repeat until stopped** keeps playing the sound until you press *Stop Sound* (or Snooze,
+  Dismiss) — handy when you are near the computer but not at it. Off, the sound plays once.
+- **Maximum length** caps how long a sound plays, repeated or not: 3 minutes by default, or any
+  time down to a few seconds; **No limit** plays until you stop it. The popup stays open.
+- **By kind of alert:** meeting reminders and new meetings can each have a sound of their own.
+- **By calendar:** every account, local calendar and calendar of an account can have its own
+  reminder and new-meeting sounds. A calendar's sound comes first, then its account's, then the
+  kind of alert, then the main alert sound — so anything you don't set keeps the main sound.
+
 **Mute Notifications** in the tray menu silences all sounds; popups still appear.
 
 ### Tray menu

@@ -34,7 +34,7 @@ func (a *App) showAlert(al scheduler.Alert) {
 		return
 	}
 	a.alerts[w] = true
-	a.svc.PlayAlertSound()
+	a.svc.PlayAlertSound(al, false)
 }
 
 func (w *alertWindow) create() error {
@@ -188,7 +188,11 @@ func (a *App) showNewEvents(sourceID int64, events []*model.Event) {
 		a.ni.ShowInfo("New events", fmt.Sprintf("%d more new events", rest))
 	}
 	if len(alerts) > 0 || rest > 0 {
-		a.svc.PlayAlertSound()
+		var first scheduler.Alert // one sound for the batch: that of the first event shown
+		if len(alerts) > 0 {
+			first = alerts[0]
+		}
+		a.svc.PlayAlertSound(first, true)
 	}
 }
 

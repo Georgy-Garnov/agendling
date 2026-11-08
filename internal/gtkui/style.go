@@ -20,6 +20,7 @@ const appCSS = `
 .settings-card { background-color: #ffffff; border: 1px solid #e3e6ea; border-radius: 8px; padding: 12px 16px; }
 .settings-title { font-size: 20pt; font-weight: 600; color: #1f2328; }
 .settings-caption { color: #5f6670; font-size: 9pt; }
+.settings-section { font-size: 12pt; font-weight: 600; color: #1f2328; }
 .settings-field { color: #5f6670; }
 .settings-card switch:checked { background-color: #0f6cbd; border-color: #0f6cbd; }
 .event-title { font-size: 14pt; }

@@ -6,14 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Maximum sound length** in Settings → Sound: how long an alert sound may play, repeated or not
+  (3 minutes by default, e.g. 15 seconds, or *No limit* to play until stopped). A long sound file
+  played once now stops there too (#8, thanks [@ciesinsk](https://github.com/ciesinsk)).
+- **Sounds per kind of alert and per calendar:** meeting reminders and new meetings can each have a
+  sound of their own, and so can every account, local calendar and calendar of an account. A
+  calendar's sound comes first, then its account's, then the kind of alert, then the main alert
+  sound, so existing setups keep sounding as before.
+
+### Changed
+- *Repeat until stopped* repeats up to the maximum length instead of a fixed 3 minutes; ▶ Test
+  in Settings still plays the whole file.
+
 ### Fixed
 - An event whose title, description or location contains a carriage return (as some servers send
   it) no longer fails to save or sync: line breaks of any kind are now written correctly.
 - Event titles with line breaks (common in synced invitations) are shown on one line in the
   calendar grid instead of being clipped (#7, thanks [@ciesinsk](https://github.com/ciesinsk)).
-
-### Changed
-- Notification sounds stop automatically after at most 15 seconds.
 
 ## [0.4.0] - 2026-11-08
 

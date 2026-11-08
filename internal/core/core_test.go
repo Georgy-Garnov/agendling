@@ -282,6 +282,7 @@ func TestFilterSettingsPages(t *testing.T) {
 		"snooze":        "reminders",
 		"ICLOUD":        "calendars",
 		"mp3":           "sound",
+		"no limit":      "sound",
 		"update":        "about",
 		"start min":     "startup",
 		"sound popup":   "alerts",

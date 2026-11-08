@@ -57,16 +57,19 @@ func (s *Service) EnsureDefaultCalendar() {
 	_ = s.Store.SaveSource(&model.CalendarSource{Name: "Personal", Type: model.SourceLocal, Color: "#4285f4", Enabled: true})
 }
 
-// PlayAlertSound plays the configured sound (falling back to the built-in chime) unless muted.
-func (s *Service) PlayAlertSound() {
+// PlayAlertSound plays the sound for an alert (see AlertSound; falling back to the built-in chime)
+// unless muted. al.Event is nil for an alert about several events.
+func (s *Service) PlayAlertSound(al scheduler.Alert, isNew bool) {
 	st := s.Store.Settings()
 	if st.Muted {
 		return
 	}
+	path := AlertSound(st, al.Event, al.Calendar, isNew)
+	limit := time.Duration(st.SoundLimitSeconds) * time.Second
 	go func() {
-		if err := s.Audio.PlayAlert(st.CustomSoundPath, st.LoopSound); err != nil {
-			log.Printf("play %q: %v; falling back to built-in chime", st.CustomSoundPath, err)
-			_ = s.Audio.PlayAlert("", st.LoopSound)
+		if err := s.Audio.PlayAlert(path, st.LoopSound, limit); err != nil {
+			log.Printf("play %q: %v; falling back to built-in chime", path, err)
+			_ = s.Audio.PlayAlert("", st.LoopSound, limit)
 		}
 	}()
 }

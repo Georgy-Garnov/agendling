@@ -113,7 +113,14 @@ type AppSettings struct {
 	RunAtStartup           bool
 	StartMinimized         bool
 	LoopSound              bool
-	Muted                  bool
+	// SoundLimitSeconds is how long an alert sound may play, repeated or not; 0 = until stopped.
+	SoundLimitSeconds int
+	// TypeSounds replace CustomSoundPath for reminders or for new meetings; CalendarSounds replace
+	// them for an account or a local calendar ("c<id>") or one calendar of an account
+	// ("c<id>:<collection path>"), see core.AlertSound.
+	TypeSounds     AlertSounds
+	CalendarSounds map[string]AlertSounds `json:",omitempty"`
+	Muted          bool
 	// NewEventAlertsOff disables the sound + popup for events that appear after a sync.
 	NewEventAlertsOff bool
 	// CloseWithoutTray is what closing the window does when there is no system tray (Linux):
@@ -122,6 +129,20 @@ type AppSettings struct {
 	// HiddenCalendars holds the keys (core.Calendar.Key) of calendars unticked in the main
 	// window's calendar list; their events are not drawn but still synced and reminded of.
 	HiddenCalendars []string
+}
+
+// Sound is an optional replacement of the main alert sound, used while Custom is on. Path keeps
+// the chosen file while it is off; an empty Path plays the built-in chime.
+type Sound struct {
+	Custom bool   `json:",omitempty"`
+	Path   string `json:",omitempty"`
+}
+
+// AlertSounds are the sounds for the two kinds of alerts: a reminder before an event and a new
+// meeting that appeared after a sync.
+type AlertSounds struct {
+	Reminder Sound
+	NewEvent Sound
 }
 
 // Values of AppSettings.CloseWithoutTray.
@@ -135,5 +156,6 @@ func DefaultSettings() AppSettings {
 		DefaultReminderMinutes: []int{15},
 		SnoozeIntervalMinutes:  5,
 		LoopSound:              true,
+		SoundLimitSeconds:      180,
 	}
 }

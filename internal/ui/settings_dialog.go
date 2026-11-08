@@ -65,6 +65,10 @@ type settingsUI struct {
 	snooze                       *walk.NumberEdit
 	loop, newAlerts, startup     *toggleSwitch
 	minimized                    *toggleSwitch
+	limitMin, limitSec           *walk.NumberEdit
+	noLimit                      *toggleSwitch
+	typeReminder, typeNewEvent   *soundOption
+	calSounds                    []*calendarSounds
 	checkBtn                     *walk.PushButton
 	updText                      *walk.TextLabel
 	updLink                      *walk.LinkLabel
@@ -478,39 +482,6 @@ func (s *settingsUI) buildReminders() {
 	s.snooze.ValueChanged().Attach(s.updateApply)
 }
 
-func (s *settingsUI) buildSound() {
-	a := s.a
-	p := s.addPage("sound")
-	row := s.card(p, "Alert sound", "An MP3 or WAV file; leave empty for the built-in chime.", true)
-	s.soundPath, _ = walk.NewLineEdit(row)
-	s.soundPath.SetText(s.saved.CustomSoundPath)
-	s.soundPath.SetCueBanner("Built-in chime")
-	s.soundPath.SetMinMaxSize(walk.Size{Height: 30}, walk.Size{Height: 30})
-	row.Layout().(*walk.BoxLayout).SetStretchFactor(s.soundPath, 1)
-	s.soundPath.TextChanged().Attach(s.updateApply)
-	pushButton(row, "Browse…", 90, func() {
-		fd := &walk.FileDialog{Title: "Choose alert sound", Filter: "Audio files (*.mp3;*.wav)|*.mp3;*.wav|All files (*.*)|*.*"}
-		if ok, _ := fd.ShowOpen(s.dlg); ok {
-			s.soundPath.SetText(fd.FilePath)
-		}
-	})
-	pushButton(row, "Clear", 80, func() { s.soundPath.SetText("") })
-
-	right := s.card(p, "Try it", "Plays the chosen sound once.", false)
-	pushButton(right, "▶  Test", 90, func() {
-		path := strings.TrimSpace(s.soundPath.Text())
-		go func() {
-			if err := a.audio.Play(path); err != nil {
-				s.dlg.Synchronize(func() { walk.MsgBox(s.dlg, "Sound", err.Error(), walk.MsgBoxIconWarning) })
-			}
-		}()
-	})
-	pushButton(right, "■  Stop", 90, a.audio.Stop)
-
-	right = s.card(p, "Repeat until stopped", "Keep playing until you press Stop Sound, at most 15 seconds.", false)
-	s.loop, _ = newToggle(right, s.saved.LoopSound, flSurface, s.updateApply)
-}
-
 func (s *settingsUI) buildAlerts() {
 	p := s.addPage("alerts")
 	right := s.card(p, "Alert about new meetings", "Play the sound and show a popup when a sync brings in a new upcoming "+
@@ -625,8 +596,9 @@ func (s *settingsUI) collect() (model.AppSettings, error) {
 	}
 	st.DefaultReminderMinutes = mins
 	st.SnoozeIntervalMinutes = int(s.snooze.Value())
-	st.CustomSoundPath = strings.TrimSpace(s.soundPath.Text())
-	st.LoopSound = s.loop.Checked()
+	if err := s.collectSound(&st); err != nil {
+		return st, err
+	}
 	st.NewEventAlertsOff = !s.newAlerts.Checked()
 	st.RunAtStartup = s.startup.Checked()
 	st.StartMinimized = s.minimized.Checked()
@@ -635,7 +607,8 @@ func (s *settingsUI) collect() (model.AppSettings, error) {
 
 func (s *settingsUI) updateApply() {
 	if s.applyBtn == nil || s.rems == nil || s.snooze == nil || s.soundPath == nil || s.loop == nil ||
-		s.newAlerts == nil || s.startup == nil || s.minimized == nil {
+		s.noLimit == nil || s.typeReminder == nil || s.typeNewEvent == nil || s.newAlerts == nil ||
+		s.startup == nil || s.minimized == nil {
 		return // still being built
 	}
 	st, err := s.collect()

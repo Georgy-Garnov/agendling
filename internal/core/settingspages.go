@@ -24,8 +24,8 @@ var SettingsPages = []SettingsPage{
 		Intro:    "When Agendling reminds you of upcoming events.",
 		Keywords: "default reminders minutes hours before snooze interval alert popup notification"},
 	{Key: "sound", Title: "Sound", Icon: "audio-volume-high-symbolic",
-		Intro:    "The sound played with reminders and new-meeting alerts.",
-		Keywords: "audio chime melody mp3 wav file browse test play stop repeat loop until stopped mute"},
+		Intro:    "The sounds played with reminders and new-meeting alerts.",
+		Keywords: "audio chime melody mp3 wav file browse test play stop repeat loop until stopped mute maximum length duration limit minutes seconds no limit own custom sound per calendar account meeting reminder new meeting invitation"},
 	{Key: "alerts", Title: "New meetings", Icon: "mail-unread-symbolic",
 		Intro:    "Alerts for events that appear in your calendars after a sync.",
 		Keywords: "new event meeting invitation alert notify popup sound sync"},
@@ -63,7 +63,8 @@ func FilterSettingsPages(query string) []SettingsPage {
 func SameEditableSettings(a, b model.AppSettings) bool {
 	return FormatReminders(a.DefaultReminderMinutes) == FormatReminders(b.DefaultReminderMinutes) &&
 		a.SnoozeIntervalMinutes == b.SnoozeIntervalMinutes && a.CustomSoundPath == b.CustomSoundPath &&
-		a.LoopSound == b.LoopSound && a.NewEventAlertsOff == b.NewEventAlertsOff &&
+		a.LoopSound == b.LoopSound && a.SoundLimitSeconds == b.SoundLimitSeconds && a.TypeSounds == b.TypeSounds &&
+		sameCalendarSounds(a.CalendarSounds, b.CalendarSounds) && a.NewEventAlertsOff == b.NewEventAlertsOff &&
 		a.RunAtStartup == b.RunAtStartup && a.StartMinimized == b.StartMinimized &&
 		a.CloseWithoutTray == b.CloseWithoutTray
 }
