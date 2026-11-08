@@ -2,9 +2,12 @@ package core
 
 import (
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Georgy-Garnov/agendling/internal/caldav"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 	"github.com/Georgy-Garnov/agendling/internal/storage"
 )
@@ -97,15 +100,15 @@ func TestApplyEdit(t *testing.T) {
 	defer store.Close()
 	svc := NewService(store, nil, nil)
 	svc.EnsureDefaultCalendar()
-	cals, _ := svc.EditableCalendars(0)
+	cals, _ := svc.EditableCalendars(&model.Event{})
 	day := time.Date(2026, 10, 5, 0, 0, 0, 0, time.Local)
 
 	e := &model.Event{}
-	bad := EditorInput{Title: "x", Calendar: cals[0], StartDate: day, EndDate: day, StartClock: "11:00", EndClock: "10:00"}
+	bad := EditorInput{Title: "x", Calendar: &cals[0], StartDate: day, EndDate: day, StartClock: "11:00", EndClock: "10:00"}
 	if err := svc.ApplyEdit(e, bad); err == nil {
 		t.Fatal("end before start accepted")
 	}
-	in := EditorInput{Title: " Review ", Calendar: cals[0], StartDate: day, EndDate: day, StartClock: "10:00", EndClock: "11:30",
+	in := EditorInput{Title: " Review ", Calendar: &cals[0], StartDate: day, EndDate: day, StartClock: "10:00", EndClock: "11:30",
 		Reminders: "10, 1h", Rule: RuleForChoice(3, "")}
 	if err := svc.ApplyEdit(e, in); err != nil {
 		t.Fatal(err)
@@ -122,5 +125,170 @@ func TestApplyEdit(t *testing.T) {
 	got, _ = store.Event(e.ID)
 	if len(got.ExDates) != 1 {
 		t.Fatalf("exdates: %v", got.ExDates)
+	}
+}
+
+func TestCalendarChoices(t *testing.T) {
+	cals := []caldav.CalendarInfo{{Path: "/u/a/", Name: "A"}, {Path: "/u/b/", Name: "B"}, {Path: "/u/new/", Name: "New"}}
+	ch := CalendarChoices(cals, []string{"/u/b/", "/u/gone/"})
+	if !ch[0].Shown || ch[1].Shown || !ch[2].Shown {
+		t.Fatalf("choices: %+v", ch)
+	}
+	hidden, any := HiddenCalendars(ch)
+	if len(hidden) != 1 || hidden[0] != "/u/b/" || !any {
+		t.Fatalf("hidden %v, any %v", hidden, any) // calendars gone from the server are dropped
+	}
+	for i := range ch {
+		ch[i].Shown = false
+	}
+	if hidden, any := HiddenCalendars(ch); len(hidden) != 3 || any {
+		t.Fatalf("all hidden: %v, %v", hidden, any)
+	}
+}
+
+func TestCalendarsOfAccounts(t *testing.T) {
+	store, err := storage.Open(filepath.Join(t.TempDir(), "c.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	svc := NewService(store, nil, nil)
+	svc.EnsureDefaultCalendar()
+	acct := &model.CalendarSource{Name: "Cloud", Type: model.SourceCalDAV, URL: "https://dav.example/", Username: "u",
+		Enabled: true, CalendarPath: "/u/a/", HiddenCollections: []string{"/u/c/"}}
+	if err := store.SaveSource(acct); err != nil {
+		t.Fatal(err)
+	}
+	// What a sync of an account with three calendars, one unsubscribed in its settings, leaves behind.
+	if err := store.SetSyncState(acct.ID, `{"v":3,"collections":["/u/a/","/u/b/","/u/c/"],"names":{"/u/a/":"Work","/u/b/":"Home","/u/c/":"Old"}}`); err != nil {
+		t.Fatal(err)
+	}
+	labels := func(cals []Calendar) string {
+		var s []string
+		for _, c := range cals {
+			mark := "+"
+			if !c.Shown {
+				mark = "-"
+			}
+			s = append(s, mark+c.Label())
+		}
+		return strings.Join(s, ",")
+	}
+	if got := labels(svc.Calendars()); got != "+Personal  (local),+Cloud / Work,+Cloud / Home" {
+		t.Fatalf("calendars: %s", got)
+	}
+
+	day := time.Now().Add(24 * time.Hour).Truncate(time.Hour)
+	personal := svc.Calendars()[0].Source.ID
+	for _, e := range []*model.Event{
+		{CalendarID: personal, UID: "p", Title: "Personal event"},
+		{CalendarID: acct.ID, UID: "w", Title: "Work event", Href: "/u/a/w.ics"},
+		{CalendarID: acct.ID, UID: "h", Title: "Home event", Href: "/u/b/h.ics"},
+		{CalendarID: acct.ID, UID: "n", Title: "Unsent work event", Dirty: true}, // goes to the write calendar
+	} {
+		e.StartTime, e.EndTime = day, day.Add(time.Hour)
+		if err := store.SaveEvent(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shown := func() string {
+		evs, err := svc.ViewEvents(day.Add(-time.Hour), day.Add(2*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var s []string
+		for _, e := range evs {
+			s = append(s, e.Title)
+		}
+		sort.Strings(s)
+		return strings.Join(s, ",")
+	}
+	if got := shown(); got != "Home event,Personal event,Unsent work event,Work event" {
+		t.Fatalf("all shown: %s", got)
+	}
+	cals := svc.Calendars()
+	if err := svc.SetCalendarShown(cals[1].Key, false); err != nil { // Cloud / Work
+		t.Fatal(err)
+	}
+	if err := svc.SetCalendarShown(cals[0].Key, false); err != nil { // Personal
+		t.Fatal(err)
+	}
+	if got := shown(); got != "Home event" {
+		t.Fatalf("work and personal hidden: %s", got)
+	}
+	if got := labels(svc.Calendars()); got != "-Personal  (local),-Cloud / Work,+Cloud / Home" {
+		t.Fatalf("calendars after hiding: %s", got)
+	}
+	newWork := &model.Event{CalendarID: acct.ID, UID: "nw", Title: "New work", Href: "/u/a/nw.ics", StartTime: day, EndTime: day.Add(time.Hour)}
+	newHome := &model.Event{CalendarID: acct.ID, UID: "nh", Title: "New home", Href: "/u/b/nh.ics", StartTime: day, EndTime: day.Add(time.Hour)}
+	if got := svc.CalendarLabel(newHome); got != "Cloud / Home" {
+		t.Fatalf("calendar label: %q", got)
+	}
+	if alerts, rest := svc.NewEventAlerts(acct.ID, []*model.Event{newWork, newHome}); len(alerts) != 1 || alerts[0].Event != newHome || rest != 0 {
+		t.Fatalf("new-event alerts of a hidden calendar: %+v, %d", alerts, rest)
+	}
+
+	// A new event defaults to the first ticked calendar and is created in that collection.
+	newEv := &model.Event{}
+	ed, idx := svc.EditableCalendars(newEv)
+	if ed[idx].Label() != "Cloud / Home" {
+		t.Fatalf("default calendar: %s", ed[idx].Label())
+	}
+	in := EditorInput{Title: "Dentist", Calendar: &ed[idx], StartDate: day, EndDate: day, StartClock: "10:00", EndClock: "11:00"}
+	if err := svc.ApplyEdit(newEv, in); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(newEv.Href, "/u/b/") || !newEv.Dirty || newEv.MovedFrom != "" {
+		t.Fatalf("new event: href %q dirty %v moved %q", newEv.Href, newEv.Dirty, newEv.MovedFrom)
+	}
+
+	// Moving an event to another calendar of the account keeps one series and remembers the old copy.
+	work, _ := store.EventsByUID(acct.ID, "w")
+	ed, idx = svc.EditableCalendars(work[0])
+	if ed[idx].Label() != "Cloud / Work" {
+		t.Fatalf("current calendar: %s", ed[idx].Label())
+	}
+	in.Title, in.Calendar = "Work event", &ed[idx+1] // Cloud / Home
+	if err := svc.ApplyEdit(work[0], in); err != nil {
+		t.Fatal(err)
+	}
+	moved, _ := store.EventsByUID(acct.ID, "w")
+	if len(moved) != 1 || moved[0].Href != "/u/b/w.ics" || moved[0].MovedFrom != "/u/a/w.ics" || !moved[0].Dirty {
+		t.Fatalf("moved: %+v", moved[0])
+	}
+	if got := shown(); got != "Dentist,Home event,Work event" {
+		t.Fatalf("after move: %s", got)
+	}
+
+	// Showing a calendar again.
+	if err := svc.SetCalendarShown(cals[1].Key, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := labels(svc.Calendars()); got != "-Personal  (local),+Cloud / Work,+Cloud / Home" {
+		t.Fatalf("calendars after showing: %s", got)
+	}
+}
+
+func TestFilterSettingsPages(t *testing.T) {
+	keys := func(q string) string {
+		var s []string
+		for _, p := range FilterSettingsPages(q) {
+			s = append(s, p.Key)
+		}
+		return strings.Join(s, ",")
+	}
+	for q, want := range map[string]string{
+		"":              "calendars,reminders,sound,alerts,startup,about",
+		"snooze":        "reminders",
+		"ICLOUD":        "calendars",
+		"mp3":           "sound",
+		"update":        "about",
+		"start min":     "startup",
+		"sound popup":   "alerts",
+		"nothing-there": "",
+	} {
+		if got := keys(q); got != want {
+			t.Errorf("FilterSettingsPages(%q) = %q, want %q", q, got, want)
+		}
 	}
 }

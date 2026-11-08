@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS sources (
 	calendar_path TEXT NOT NULL DEFAULT '',
 	last_sync     INTEGER NOT NULL DEFAULT 0,
 	last_error    TEXT NOT NULL DEFAULT '',
-	sync_state    TEXT NOT NULL DEFAULT ''
+	sync_state    TEXT NOT NULL DEFAULT '',
+	hidden_collections TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS events (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,6 +50,7 @@ CREATE TABLE IF NOT EXISTS events (
 	reminders     TEXT NOT NULL DEFAULT '',
 	recurrence_id INTEGER NOT NULL DEFAULT 0,
 	tzid          TEXT NOT NULL DEFAULT '',
+	moved_from    TEXT NOT NULL DEFAULT '',
 	href          TEXT NOT NULL DEFAULT '',
 	etag          TEXT NOT NULL DEFAULT '',
 	dirty         INTEGER NOT NULL DEFAULT 0,
@@ -81,11 +83,27 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('events') WHERE name = 'moved_from'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := db.Exec(`ALTER TABLE events ADD COLUMN moved_from TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'sync_state'`).Scan(&n); err != nil {
 		return err
 	}
 	if n == 0 {
 		if _, err := db.Exec(`ALTER TABLE sources ADD COLUMN sync_state TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'hidden_collections'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := db.Exec(`ALTER TABLE sources ADD COLUMN hidden_collections TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
 	}
@@ -139,16 +157,19 @@ func (s *Store) notify() {
 
 // ---------- Sources ----------
 
-const sourceCols = `id, name, type, url, username, password, color, sync_interval, enabled, calendar_path, last_sync, last_error`
+const sourceCols = `id, name, type, url, username, password, color, sync_interval, enabled, calendar_path, last_sync, last_error, hidden_collections`
 
 func scanSource(sc interface{ Scan(...any) error }) (*model.CalendarSource, error) {
 	var src model.CalendarSource
-	var typ, pw string
+	var typ, pw, hidden string
 	var enabled int
 	var lastSync int64
 	if err := sc.Scan(&src.ID, &src.Name, &typ, &src.URL, &src.Username, &pw, &src.Color,
-		&src.SyncInterval, &enabled, &src.CalendarPath, &lastSync, &src.LastError); err != nil {
+		&src.SyncInterval, &enabled, &src.CalendarPath, &lastSync, &src.LastError, &hidden); err != nil {
 		return nil, err
+	}
+	if hidden != "" {
+		_ = json.Unmarshal([]byte(hidden), &src.HiddenCollections)
 	}
 	src.Type = model.SourceType(typ)
 	src.Enabled = enabled != 0
@@ -189,22 +210,30 @@ func (s *Store) SaveSource(src *model.CalendarSource) error {
 	if err != nil {
 		return fmt.Errorf("encrypt password: %w", err)
 	}
+	hidden := ""
+	if len(src.HiddenCollections) > 0 {
+		raw, err := json.Marshal(src.HiddenCollections)
+		if err != nil {
+			return err
+		}
+		hidden = string(raw)
+	}
 	s.mu.Lock()
 	if src.ID == 0 {
 		var res sql.Result
-		res, err = s.db.Exec(`INSERT INTO sources (name, type, url, username, password, color, sync_interval, enabled, calendar_path)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath)
+		res, err = s.db.Exec(`INSERT INTO sources (name, type, url, username, password, color, sync_interval, enabled, calendar_path, hidden_collections)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath, hidden)
 		if err == nil {
 			src.ID, err = res.LastInsertId()
 		}
 	} else {
 		// Cached sync state belongs to the old account when the server or login changes.
 		_, err = s.db.Exec(`UPDATE sources SET sync_state = CASE WHEN url=? AND username=? THEN sync_state ELSE '' END,
-			name=?, type=?, url=?, username=?, password=?, color=?, sync_interval=?, enabled=?, calendar_path=?
+			name=?, type=?, url=?, username=?, password=?, color=?, sync_interval=?, enabled=?, calendar_path=?, hidden_collections=?
 			WHERE id=?`,
 			src.URL, src.Username,
-			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath, src.ID)
+			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath, hidden, src.ID)
 	}
 	s.mu.Unlock()
 	if err == nil {
@@ -256,7 +285,7 @@ func (s *Store) DeleteSource(id int64) error {
 
 // ---------- Events ----------
 
-const eventCols = `id, calendar_id, uid, title, description, location, url, start_ts, end_ts, all_day, rrule, exdates, reminders, recurrence_id, href, etag, dirty, deleted, tzid`
+const eventCols = `id, calendar_id, uid, title, description, location, url, start_ts, end_ts, all_day, rrule, exdates, reminders, recurrence_id, href, etag, dirty, deleted, tzid, moved_from`
 
 func scanEvent(sc interface{ Scan(...any) error }, localCals map[int64]bool) (*model.Event, error) {
 	var e model.Event
@@ -264,7 +293,7 @@ func scanEvent(sc interface{ Scan(...any) error }, localCals map[int64]bool) (*m
 	var allDay, dirty, deleted int
 	var exdates, reminders string
 	if err := sc.Scan(&e.ID, &e.CalendarID, &e.UID, &e.Title, &e.Description, &e.Location, &e.URL,
-		&startTS, &endTS, &allDay, &e.RRule, &exdates, &reminders, &recID, &e.Href, &e.ETag, &dirty, &deleted, &e.TZID); err != nil {
+		&startTS, &endTS, &allDay, &e.RRule, &exdates, &reminders, &recID, &e.Href, &e.ETag, &dirty, &deleted, &e.TZID, &e.MovedFrom); err != nil {
 		return nil, err
 	}
 	e.AllDay = allDay != 0
@@ -388,10 +417,10 @@ func (s *Store) saveEventLocked(x execer, e *model.Event) error {
 	}
 	args := []any{e.CalendarID, e.UID, e.Title, e.Description, e.Location, e.URL,
 		toTS(e.StartTime, e.AllDay), toTS(e.EndTime, e.AllDay), b2i(e.AllDay), e.RRule,
-		encodeTimes(e.ExDates, e.AllDay), encodeReminders(e.Reminders), recID, e.Href, e.ETag, b2i(e.Dirty), b2i(e.Deleted), e.TZID}
+		encodeTimes(e.ExDates, e.AllDay), encodeReminders(e.Reminders), recID, e.Href, e.ETag, b2i(e.Dirty), b2i(e.Deleted), e.TZID, e.MovedFrom}
 	if e.ID == 0 {
 		res, err := x.Exec(`INSERT INTO events (calendar_id, uid, title, description, location, url, start_ts, end_ts, all_day,
-			rrule, exdates, reminders, recurrence_id, href, etag, dirty, deleted, tzid) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, args...)
+			rrule, exdates, reminders, recurrence_id, href, etag, dirty, deleted, tzid, moved_from) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, args...)
 		if err != nil {
 			return err
 		}
@@ -399,7 +428,7 @@ func (s *Store) saveEventLocked(x execer, e *model.Event) error {
 		return err
 	}
 	_, err := x.Exec(`UPDATE events SET calendar_id=?, uid=?, title=?, description=?, location=?, url=?, start_ts=?, end_ts=?, all_day=?,
-		rrule=?, exdates=?, reminders=?, recurrence_id=?, href=?, etag=?, dirty=?, deleted=?, tzid=? WHERE id=?`, append(args, e.ID)...)
+		rrule=?, exdates=?, reminders=?, recurrence_id=?, href=?, etag=?, dirty=?, deleted=?, tzid=?, moved_from=? WHERE id=?`, append(args, e.ID)...)
 	return err
 }
 

@@ -1,6 +1,8 @@
 // Package appinfo holds the product identity used across the app.
 package appinfo
 
+import _ "embed"
+
 const (
 	// Name is the product name shown to users.
 	Name = "Agendling"
@@ -14,3 +16,8 @@ const (
 
 // Version is set at build time: -ldflags "-X github.com/Georgy-Garnov/agendling/internal/appinfo.Version=v1.2.3".
 var Version = "dev"
+
+// LogoPNG is the app logo (256×256), shown in the About section.
+//
+//go:embed logo.png
+var LogoPNG []byte

@@ -44,100 +44,108 @@ func (w *alertWindow) create() error {
 	if title == "" {
 		title = "(No title)"
 	}
-
 	calName, calColor := "", ParseColor("")
 	if al.Calendar != nil {
-		calName, calColor = al.Calendar.Name, ParseColor(al.Calendar.Color)
+		calName, calColor = w.app.svc.CalendarLabel(e), ParseColor(al.Calendar.Color)
+		if calName == "" {
+			calName = al.Calendar.Name
+		}
 	}
-
-	var children []Widget
-	if w.isNew {
-		children = append(children, Label{Text: "New event added to " + calName,
-			Font: Font{Family: "Segoe UI", PointSize: 10, Bold: true}, TextColor: colAccent})
-	}
-	children = append(children,
-		Label{Text: title, Font: Font{Family: "Segoe UI", PointSize: 14, Bold: true}, TextColor: walk.RGB(30, 30, 30)},
-		Label{Text: core.WhenText(al), Font: Font{Family: "Segoe UI", PointSize: 10}},
-		Composite{
-			Layout: HBox{MarginsZero: true, Spacing: 4},
-			Children: []Widget{
-				CustomWidget{
-					MinSize: Size{Width: 12, Height: 12}, MaxSize: Size{Width: 12, Height: 12},
-					PaintPixels: func(c *walk.Canvas, r walk.Rectangle) error {
-						b, err := walk.NewSolidColorBrush(calColor)
-						if err != nil {
-							return err
-						}
-						defer b.Dispose()
-						size := c.DPI() * 10 / 96
-						return c.FillEllipsePixels(b, walk.Rectangle{X: 1, Y: 1, Width: size, Height: size})
-					},
-				},
-				Label{Text: calName, TextColor: walk.RGB(90, 90, 90)},
-				HSpacer{},
-			},
-		},
-	)
-	openLink := func(link *walk.LinkLabelLink) { OpenURL(link.URL()) }
-	if e.Location != "" {
-		children = append(children, LinkLabel{
-			Alignment: AlignHNearVCenter, MaxSize: Size{Width: 420},
-			Text: "📍 " + LinkMarkup(e.Location, 60), OnLinkActivated: openLink,
-		})
-	}
-	if e.URL != "" {
-		children = append(children, LinkLabel{
-			Alignment: AlignHNearVCenter, MaxSize: Size{Width: 420},
-			Text: "🔗 " + LinkMarkup(e.URL, 60), OnLinkActivated: openLink,
-		})
-	}
-	if desc := strings.TrimSpace(core.PlainText(e.Description)); desc != "" {
-		// The description with every URL clickable in place; scrolls when long.
-		children = append(children, ScrollView{
-			HorizontalFixed: true,
-			MinSize:         Size{Height: 110},
-			StretchFactor:   1,
-			Layout:          VBox{Margins: Margins{Left: 4, Top: 4, Right: 4, Bottom: 4}},
-			Background:      SolidColorBrush{Color: walk.RGB(255, 255, 255)},
-			Children: []Widget{
-				LinkLabel{Text: LinkMarkup(desc, 60), MinSize: Size{Width: 400}, MaxSize: Size{Width: 400}, OnLinkActivated: openLink,
-					Alignment: AlignHNearVNear, StretchFactor: 1,
-					Background: SolidColorBrush{Color: walk.RGB(255, 255, 255)}},
-				VSpacer{},
-			},
-		})
-	} else {
-		children = append(children, VSpacer{})
-	}
-
-	items, cur := core.SnoozeLabels(w.app.store.Settings().SnoozeIntervalMinutes)
-
-	buttons := []Widget{PushButton{Text: "🔇 Stop Sound", OnClicked: w.stopSound}, HSpacer{}}
 	windowTitle := "Reminder — " + title
 	if w.isNew {
 		windowTitle = "New event — " + title
-		buttons = append(buttons,
-			PushButton{Text: "Open in calendar", OnClicked: w.openInCalendar},
-			PushButton{Text: "Dismiss", OnClicked: w.dismiss})
-	} else {
-		buttons = append(buttons,
-			ComboBox{AssignTo: &w.snooze, Model: items, CurrentIndex: cur, MaxSize: Size{Width: 80}},
-			PushButton{Text: "Snooze", OnClicked: w.doSnooze},
-			PushButton{Text: "Dismiss", OnClicked: w.dismiss})
 	}
-	children = append(children, Composite{Layout: HBox{MarginsZero: true}, Children: buttons})
+	desc := strings.TrimSpace(core.PlainText(e.Description))
+	height := 250
+	if desc != "" {
+		height = 360
+	}
 
+	var content, bar *walk.Composite
 	err := MainWindow{
-		AssignTo: &w.mw,
-		Title:    windowTitle,
-		Size:     Size{Width: 460, Height: 300},
-		MinSize:  Size{Width: 380, Height: 200},
-		Layout:   VBox{Margins: Margins{Left: 14, Top: 12, Right: 14, Bottom: 12}},
-		Children: children,
+		AssignTo:   &w.mw,
+		Title:      windowTitle,
+		Size:       Size{Width: 480, Height: height},
+		MinSize:    Size{Width: 400, Height: 220},
+		Font:       Font{Family: "Segoe UI", PointSize: 10},
+		Background: SolidColorBrush{Color: flSurface},
+		Layout:     VBox{MarginsZero: true, SpacingZero: true},
+		Children: []Widget{
+			Composite{AssignTo: &content, Layout: VBox{Margins: Margins{Left: 20, Top: 16, Right: 20, Bottom: 12}, Spacing: 4}},
+			Composite{Background: SolidColorBrush{Color: flLine}, MinSize: Size{Height: 1}, MaxSize: Size{Height: 1}},
+			Composite{AssignTo: &bar, Background: SolidColorBrush{Color: flWindow},
+				Layout: HBox{Margins: Margins{Left: 16, Top: 12, Right: 16, Bottom: 12}, Spacing: 8}},
+		},
 	}.Create()
 	if err != nil {
 		return err
 	}
+
+	if w.isNew {
+		label(content, "New meeting", uiFont(9, true), flAccent)
+	}
+	t := caption(content, title)
+	t.SetFont(uiFont(16, true))
+	t.SetTextColor(flText)
+	label(content, core.WhenText(al), uiFont(10, false), flText)
+	row := box(content, false, walk.Margins{VNear: 2}, 6)
+	newColorDot(row, calColor, flSurface)
+	label(row, calName, uiFont(10, false), flText2)
+	walk.NewHSpacer(row)
+
+	openLink := func(link *walk.LinkLabelLink) { OpenURL(link.URL()) }
+	addLink := func(glyph, text string) {
+		r := box(content, false, walk.Margins{}, 6)
+		label(r, glyph, iconFont(10), flText2)
+		l, _ := walk.NewLinkLabel(r)
+		l.SetBackground(walk.NullBrush())
+		l.SetText(LinkMarkup(text, 60))
+		l.LinkActivated().Attach(openLink)
+		walk.NewHSpacer(r)
+	}
+	if e.Location != "" {
+		addLink(glyphLocation, e.Location)
+	}
+	if e.URL != "" {
+		addLink(glyphLink, e.URL)
+	}
+	if desc != "" {
+		// The description with every URL clickable in place; scrolls when long.
+		card := box(content, true, walk.Margins{HNear: 12, VNear: 10, HFar: 12, VFar: 10}, 0)
+		makeCard(card, flSurface)
+		content.Layout().(*walk.BoxLayout).SetStretchFactor(card, 1)
+		sv, _ := walk.NewScrollView(card)
+		sv.SetScrollbars(true, true) // with both allowed it fills the card's width
+		sv.SetBackground(walk.NullBrush())
+		sl := walk.NewVBoxLayout()
+		sl.SetMargins(walk.Margins{})
+		sl.SetAlignment(walk.AlignHNearVNear)
+		sv.SetLayout(sl)
+		card.Layout().(*walk.BoxLayout).SetStretchFactor(sv, 1)
+		l, _ := walk.NewLinkLabel(sv)
+		l.SetBackground(walk.NullBrush())
+		l.SetText(LinkMarkup(desc, 60))
+		l.LinkActivated().Attach(openLink)
+		walk.NewVSpacer(sv)
+	} else {
+		walk.NewVSpacer(content)
+	}
+
+	pushButton(bar, "Stop sound", 110, w.stopSound)
+	walk.NewHSpacer(bar)
+	if w.isNew {
+		pushButton(bar, "Open in calendar", 140, w.openInCalendar)
+		pushButton(bar, "Dismiss", 96, w.dismiss)
+	} else {
+		items, cur := core.SnoozeLabels(w.app.store.Settings().SnoozeIntervalMinutes)
+		w.snooze, _ = walk.NewComboBox(bar)
+		w.snooze.SetModel(items)
+		w.snooze.SetCurrentIndex(cur)
+		w.snooze.SetMinMaxSize(walk.Size{Width: 90}, walk.Size{Width: 90})
+		pushButton(bar, "Snooze", 96, w.doSnooze)
+		pushButton(bar, "Dismiss", 96, w.dismiss)
+	}
+
 	if w.app.icon != nil {
 		w.mw.SetIcon(w.app.icon)
 	}

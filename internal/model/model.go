@@ -27,8 +27,11 @@ type CalendarSource struct {
 
 	// CalendarPath is the discovered collection path used for writes (CalDAV only).
 	CalendarPath string
-	LastSync     time.Time
-	LastError    string
+	// HiddenCollections lists collection paths of the account the user chose not to show; they
+	// are not synchronized either. Calendars added on the server later are shown by default.
+	HiddenCollections []string
+	LastSync          time.Time
+	LastError         string
 }
 
 func (s *CalendarSource) IsLocal() bool { return s.Type == SourceLocal }
@@ -65,6 +68,9 @@ type Event struct {
 	ETag    string
 	Dirty   bool // local change not yet pushed
 	Deleted bool // deleted locally, pending remote DELETE
+	// MovedFrom is the previous Href of an event moved to another calendar of the same account;
+	// the old copy is deleted from the server once the event is stored at Href.
+	MovedFrom string
 }
 
 func (e *Event) Duration() time.Duration { return e.EndTime.Sub(e.StartTime) }
@@ -110,7 +116,19 @@ type AppSettings struct {
 	Muted                  bool
 	// NewEventAlertsOff disables the sound + popup for events that appear after a sync.
 	NewEventAlertsOff bool
+	// CloseWithoutTray is what closing the window does when there is no system tray (Linux):
+	// "" asks, CloseMinimize keeps running minimized, CloseQuit exits.
+	CloseWithoutTray string
+	// HiddenCalendars holds the keys (core.Calendar.Key) of calendars unticked in the main
+	// window's calendar list; their events are not drawn but still synced and reminded of.
+	HiddenCalendars []string
 }
+
+// Values of AppSettings.CloseWithoutTray.
+const (
+	CloseMinimize = "minimize"
+	CloseQuit     = "quit"
+)
 
 func DefaultSettings() AppSettings {
 	return AppSettings{

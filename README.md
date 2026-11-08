@@ -49,6 +49,9 @@ meeting or a freshly booked one.
   colour-coded.
 - **Two-way CalDAV sync** for several accounts at once (Nextcloud, Fastmail, iCloud, Radicale,
   Baïkal and others), plus **local calendars** that never leave your machine.
+- **Every calendar of every account:** pick which ones to show from the **Calendars ▾** dropdown,
+  choose which of an account's calendars to sync at all, and create or move events into a specific
+  calendar (e.g. *iCloud / Family*).
 - **Full event editing:** title, location, link, description, all-day events, repeats and custom
   reminder times. Changes go back to the server on the next sync.
 - **Correct time zones:** recurring events keep their wall-clock time in the zone they were
@@ -56,17 +59,23 @@ meeting or a freshly booked one.
 
 ## Screenshots
 
+| Show or hide calendars | Month view |
+|---|---|
+| <img src="docs/screenshots/calendars.png" width="440" alt="Calendars dropdown with an eye per calendar"> | <img src="docs/screenshots/month.png" width="440" alt="Month view"> |
+
 | Reminder popup | New-meeting alert |
 |---|---|
-| <img src="docs/screenshots/reminder.png" width="400" alt="Reminder popup"> | <img src="docs/screenshots/new-event.png" width="400" alt="New event popup"> |
+| <img src="docs/screenshots/reminder.png" width="400" alt="Reminder popup"> | <img src="docs/screenshots/new-event.png" width="400" alt="New meeting popup"> |
 
-| Month view | Event editor |
+| Event editor | CalDAV account |
 |---|---|
-| <img src="docs/screenshots/month.png" width="480" alt="Month view"> | <img src="docs/screenshots/editor.png" width="330" alt="Event editor"> |
+| <img src="docs/screenshots/editor.png" width="360" alt="Event editor"> | <img src="docs/screenshots/account.png" width="400" alt="CalDAV account with calendars to sync"> |
 
 | Settings | Linux (GTK 3) |
 |---|---|
-| <img src="docs/screenshots/settings.png" width="400" alt="Settings"> | <img src="docs/screenshots/linux-week.png" width="480" alt="Linux week view"> |
+| <img src="docs/screenshots/settings.png" width="440" alt="Settings with section list and search"> | <img src="docs/screenshots/linux-calendars.png" width="440" alt="Linux week view with the calendars dropdown"> |
+
+The screenshots are made with `make uishots` (Windows, demo data) and `tools/demodata` (Linux).
 
 ## Installation
 
@@ -75,7 +84,7 @@ meeting or a freshly booked one.
 1. Download `agendling-<version>-windows-amd64.zip` from
    [Releases](https://github.com/Georgy-Garnov/agendling/releases).
 2. Unzip it anywhere, for example `%LocalAppData%\Programs\Agendling`, and run `agendling.exe`.
-3. Optional: in **Settings → Behavior**, enable **Run at Windows startup** and **Start minimized**.
+3. Optional: in **Settings → Startup**, enable **Run at Windows startup** and **Start minimized**.
 
 There is no installer; to uninstall, see [Data and privacy](#data-and-privacy).
 
@@ -106,7 +115,7 @@ To update, install the newer `.deb` the same way; `sudo apt remove agendling` un
    ```
 3. Run `./agendling-linux-amd64`; you can also copy the binary to `~/.local/bin`.
 
-To start Agendling automatically, enable **Settings → Behavior → Run at login**.
+To start Agendling automatically, enable **Settings → Startup → Run at login**.
 
 The tray icon uses the StatusNotifierItem/AppIndicator protocol. On Ubuntu's GNOME the
 *Ubuntu AppIndicators* extension is enabled by default; on other GNOME setups install
@@ -122,11 +131,25 @@ Agendling starts with an empty local calendar called **Personal**. To see your e
 1. Open **Settings → Calendars → Add CalDAV account…**
 2. Enter a name, the server URL, your username and an **app password** (see the
    [provider table](#caldav-providers); for iCloud follow the [iCloud setup guide](docs/icloud.md)).
-3. Click **Test connection**. It should say how many calendars it found.
+3. Click **Test connection**. It should say how many calendars it found; if there are several,
+   untick the ones you don't want to sync at all (you can change this later with **Edit…**).
 4. Choose a colour and a sync interval, then click **OK**. The first sync starts immediately.
 
 You can add as many accounts and local calendars as you like. Untick **Enabled** to hide a
 calendar without deleting it.
+
+Settings are grouped into sections on the left (Calendars, Reminders, Sound, New meetings,
+Startup, About); type in **Search settings** to find one quickly.
+
+### Choosing which calendars to show
+
+The **Calendars ▾** button in the toolbar opens a list of all your calendars, each with its colour,
+the account it belongs to and an eye: open for calendars that are shown, crossed out for hidden
+ones. Click a calendar to show or hide it; the list stays open so you can pick one or several, and
+**Show all** brings everything back. When some calendars are hidden the button says how many are
+shown (e.g. *Calendars 3/5*). Calendars added later are shown. Hidden calendars keep syncing and
+their reminders still fire, but their events are not drawn and they don't raise new-meeting
+alerts.
 
 ### Navigating
 
@@ -154,8 +177,10 @@ field.
   Leave the field empty to use the default reminders from Settings.
 - **Recurring events:** editing changes the whole series. **Delete** asks whether to remove only
   this occurrence or the entire series.
-- **Moving an event** to another calendar (even from a CalDAV account to a local one) moves the
-  whole series.
+- **Calendar:** for accounts with several calendars, pick the calendar itself (e.g. *iCloud / Work*).
+  A new event goes into the first calendar ticked in the main window unless you choose another.
+- **Moving an event** to another calendar (even from a CalDAV account to a local one, or between
+  two calendars of the same account) moves the whole series.
 
 ### Reminders and alerts
 
@@ -169,13 +194,13 @@ Clicking a link in the popup opens it in your default browser.
 
 **New-meeting alerts** use the same popup, titled *New event added to …*, with an
 **Open in calendar** button. At most three popups are shown per sync; any more are summarised in
-one message. The first sync of a newly added account never triggers them. You can turn them off
-in **Settings → Notifications**.
+one message. The first sync of a newly added account never triggers them, nor do calendars
+unticked in the main window. You can turn them off in **Settings → New meetings**.
 
 ### Sound
 
-In **Settings → Notifications** choose an MP3 or WAV file, or leave the field empty for the
-built-in chime. **▶ Test** plays it and **■ Stop** stops it. With *Repeat the sound until stopped*,
+In **Settings → Sound** choose an MP3 or WAV file, or leave the field empty for the
+built-in chime. **▶ Test** plays it and **■ Stop** stops it. With *Repeat until stopped*,
 the sound loops for up to 3 minutes. **Mute Notifications** in the tray menu silences all sounds;
 popups still appear.
 
@@ -184,6 +209,11 @@ popups still appear.
 **Open Agendling**, **Sync Now**, **Mute Notifications**, **Settings**, **Exit**. Closing the main window
 keeps Agendling running in the tray; use **Exit** to quit. Launching Agendling again while it's
 running brings its window to the front instead of starting a second copy.
+
+On Linux the **☰** menu in the window's header also has **Quit** (Ctrl+Q). Where no tray is shown
+(for example GNOME without the AppIndicator extension, or a Linux app run under WSL), closing the
+window asks once whether to keep Agendling running minimized for the reminders or to quit; the
+answer can be changed in **Settings → Startup**.
 
 ## CalDAV providers
 
@@ -199,8 +229,9 @@ Agendling uses standard CalDAV (RFC 4791) with basic authentication. Most provid
 | Baïkal | `https://your.host/dav.php` | Your Baïkal password |
 | Other servers | The server's CalDAV root, or the URL of a single calendar | Usually an app password |
 
-- **A root URL** makes Agendling discover all event calendars of the account and show them
-  together. New events go into the first one.
+- **A root URL** makes Agendling discover all event calendars of the account; each appears in the
+  main window's calendar list. After **Test connection** you can untick calendars you don't want
+  to sync at all.
 - **A URL pointing at one calendar collection** syncs only that calendar.
 - **Google Calendar is not supported:** Google's CalDAV endpoint only accepts OAuth 2.0.
 
@@ -219,8 +250,9 @@ offline.
 | Passwords | Encrypted with Windows DPAPI, tied to your user account | AES-GCM; the key is kept in the desktop keyring (GNOME Keyring / KWallet), or in a user-only key file if no keyring runs |
 | Autostart | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` → `Agendling` | `~/.config/autostart/agendling.desktop` |
 
-Agendling talks only to the CalDAV servers you configure. It has no telemetry, no update checks
-and no accounts. To uninstall, exit the app, disable autostart in Settings (or delete the entry
+Agendling talks only to the CalDAV servers you configure. It has no telemetry, no automatic update
+checks and no accounts: **Settings → About → Check for updates** asks GitHub for the latest release
+only when you press it, and offers a link to the release page; nothing is downloaded. To uninstall, exit the app, disable autostart in Settings (or delete the entry
 above), then delete the binary and the data directory.
 
 ## Building from source
@@ -241,6 +273,7 @@ cd agendling
 make windows   # bin/agendling.exe          (works on Windows, Linux, macOS; no C compiler)
 make linux     # bin/agendling-linux-amd64  (on Linux)
 make deb       # dist/agendling_<version>_amd64.deb (on Linux, after building the binary)
+make uishots   # bin/uishots.exe: run "uishots.exe DIR" on Windows to screenshot the UI with demo data
 make test      # unit and integration tests
 make vet       # static checks for both platforms
 make help      # all targets

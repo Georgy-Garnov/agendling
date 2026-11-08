@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 
 	"github.com/Georgy-Garnov/agendling/internal/appinfo"
@@ -36,6 +37,8 @@ func main() {
 	}
 	if f, err := os.OpenFile(filepath.Join(dir, appinfo.ID+".log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 		log.SetOutput(f)
+		// A crash would otherwise vanish without a trace (the Windows build has no console).
+		_ = debug.SetCrashOutput(f, debug.CrashOptions{})
 		defer f.Close()
 	}
 

@@ -20,8 +20,22 @@ func TestStoreRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := st.Source(src.ID)
-	if err != nil || got.Password != "p" {
+	if err != nil || got.Password != "p" || len(got.HiddenCollections) != 0 {
 		t.Fatalf("source: %+v %v", got, err)
+	}
+	src.HiddenCollections = []string{"/u/cal/b/", "/u/cal/c/"}
+	if err := st.SaveSource(src); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Source(src.ID); len(got.HiddenCollections) != 2 || got.HiddenCollections[1] != "/u/cal/c/" {
+		t.Fatalf("hidden collections: %+v", got.HiddenCollections)
+	}
+	src.HiddenCollections = nil
+	if err := st.SaveSource(src); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Source(src.ID); len(got.HiddenCollections) != 0 {
+		t.Fatalf("hidden collections not cleared: %+v", got.HiddenCollections)
 	}
 
 	start := time.Date(2026, 5, 1, 0, 0, 0, 0, time.Local)

@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	_ "time/tzdata" // IANA zones for TZIDs in CalDAV data; Windows has no zoneinfo
 
 	"github.com/lxn/walk"
@@ -41,6 +42,8 @@ func main() {
 
 	if f, err := os.OpenFile(filepath.Join(dir, appinfo.ID+".log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 		log.SetOutput(f)
+		// A crash would otherwise vanish without a trace (the Windows build has no console).
+		_ = debug.SetCrashOutput(f, debug.CrashOptions{})
 		defer f.Close()
 	}
 

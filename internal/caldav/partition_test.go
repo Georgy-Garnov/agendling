@@ -81,8 +81,8 @@ func TestSyncFollowsHomeSetToPartitionHost(t *testing.T) {
 	putEvent(backend, "a", "On partition", start)
 	store, src := newTestSource(t, front.URL)
 
-	if n, err := TestConnection(context.Background(), src); err != nil || n != 1 {
-		t.Fatalf("test connection: %d, %v", n, err)
+	if cals, err := TestConnection(context.Background(), src); err != nil || len(cals) != 1 {
+		t.Fatalf("test connection: %+v, %v", cals, err)
 	}
 	if added, err := SyncSource(context.Background(), store, src); err != nil || len(added) != 0 {
 		t.Fatalf("first sync: added %d, err %v", len(added), err) // an initial import is not "new"

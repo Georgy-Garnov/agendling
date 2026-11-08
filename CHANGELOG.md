@@ -10,6 +10,40 @@ All notable changes to this project are documented here. The format follows
 - Event titles with line breaks (common in synced invitations) are shown on one line in the
   calendar grid instead of being clipped (#7, thanks [@ciesinsk](https://github.com/ciesinsk)).
 
+## [0.4.0] - 2026-11-08
+
+### Added
+- **Choose which calendars to show:** the **Calendars ▾** toolbar button opens a list of every
+  calendar, including each calendar of a CalDAV account (e.g. all iCloud calendars), with its
+  colour, account and an eye to show or hide it; pick one or several. Hidden calendars keep syncing
+  and reminding but are not drawn and stay quiet on new meetings.
+- **Pick the calendar inside an account** in the event editor, and move events between calendars
+  of the same account (stored in the new calendar, then removed from the old one on the server).
+- **Choose which calendars of an account to sync** in its Edit dialog after *Test connection*;
+  calendars created on the server later are synced by default.
+- **Redesigned Settings:** sections on the left (Calendars, Reminders, Sound, New meetings,
+  Startup, About), the settings on the right, a search box that finds a section by any setting
+  name, and OK / Cancel / Apply.
+- **About** page with the version, the data folder and a **Check for updates** button that asks
+  GitHub for the latest release on request and links to its release page (no automatic checks, no
+  downloads).
+- **Refreshed look:** a new toolbar (view switcher, calendar dropdown, accent *New event*), and the
+  account and event editors in the same card style as Settings, on Windows and Linux.
+- Reminder and new-meeting popups in the same style, naming the exact calendar (e.g. *iCloud / Family*).
+- Linux: a **☰** menu in the header with Settings, About and **Quit** (Ctrl+Q). Without a system
+  tray, closing the window asks once whether to keep running minimized or to quit (Settings →
+  Startup); tray detection now also checks that something actually displays tray icons.
+- About shows the app logo; an update check that fails (e.g. GitHub's timeouts for anonymous API
+  requests) is retried up to three times, explained, and links to the list of releases.
+- Windows: Settings, account and event dialogs show the app icon.
+- `make uishots` builds a screenshot tour of the Windows UI with demo data, for reviewing the look.
+
+### Fixed
+- Linux: *Edit…* in Settings → Calendars crashed the app.
+- Windows: OK in Settings (and Save/OK in the event and account editors) could close the whole app:
+  the dialog was closed while walk still had a layout pending for it.
+- A crash now leaves its stack trace in `agendling.log` instead of vanishing silently.
+
 ## [0.3.2] - 2026-11-08
 
 ### Fixed
@@ -83,7 +117,8 @@ All notable changes to this project are documented here. The format follows
 - Encrypted password storage (Windows DPAPI; AES-GCM with the desktop keyring on Linux).
 - Run at startup / start minimized.
 
-[Unreleased]: https://github.com/Georgy-Garnov/agendling/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/Georgy-Garnov/agendling/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Georgy-Garnov/agendling/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/Georgy-Garnov/agendling/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Georgy-Garnov/agendling/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Georgy-Garnov/agendling/compare/v0.2.1...v0.3.0
