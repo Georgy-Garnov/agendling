@@ -12,6 +12,9 @@ All notable changes to this project are documented here. The format follows
 - Event titles with line breaks (common in synced invitations) are shown on one line in the
   calendar grid instead of being clipped (#7, thanks [@ciesinsk](https://github.com/ciesinsk)).
 
+### Changed
+- Notification sounds stop automatically after at most 15 seconds.
+
 ## [0.4.0] - 2026-11-08
 
 ### Added

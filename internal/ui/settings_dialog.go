@@ -500,14 +500,14 @@ func (s *settingsUI) buildSound() {
 	pushButton(right, "▶  Test", 90, func() {
 		path := strings.TrimSpace(s.soundPath.Text())
 		go func() {
-			if err := a.audio.Play(path, false); err != nil {
+			if err := a.audio.Play(path); err != nil {
 				s.dlg.Synchronize(func() { walk.MsgBox(s.dlg, "Sound", err.Error(), walk.MsgBoxIconWarning) })
 			}
 		}()
 	})
 	pushButton(right, "■  Stop", 90, a.audio.Stop)
 
-	right = s.card(p, "Repeat until stopped", "Keep playing until you press Stop Sound, at most 3 minutes.", false)
+	right = s.card(p, "Repeat until stopped", "Keep playing until you press Stop Sound, at most 15 seconds.", false)
 	s.loop, _ = newToggle(right, s.saved.LoopSound, flSurface, s.updateApply)
 }
 

@@ -25,9 +25,8 @@ import (
 const (
 	sampleRate = 48000
 	// Small device buffer: Stop() is audible within ~40 ms.
-	deviceBuffer = 40 * time.Millisecond
-	// Looping alarms give up eventually so a forgotten popup doesn't ring forever.
-	maxLoopDuration = 3 * time.Minute
+	deviceBuffer  = 40 * time.Millisecond
+	alertDuration = 15 * time.Second
 )
 
 type Manager struct {
@@ -57,9 +56,28 @@ func (m *Manager) ensureContext() error {
 	return nil
 }
 
-// Play stops any current sound and starts the given file (empty path = built-in chime).
-// It returns immediately; decoding and output run on background goroutines.
-func (m *Manager) Play(path string, loop bool) error {
+// Play previews a sound once (empty path = built-in chime).
+func (m *Manager) Play(path string) error {
+	return m.play(path, nil)
+}
+
+// PlayAlert starts a notification sound for at most 15 seconds.
+func (m *Manager) PlayAlert(path string, loop bool) error {
+	return m.play(path, func(src beep.StreamSeekCloser, rate beep.SampleRate) beep.Streamer {
+		return alertStream(src, rate, loop)
+	})
+}
+
+// alertStream limits both repeated chimes and long single-play sound files.
+func alertStream(src beep.StreamSeeker, rate beep.SampleRate, loop bool) beep.Streamer {
+	limit := rate.N(alertDuration)
+	if loop {
+		return &looper{s: src, limit: limit}
+	}
+	return beep.Take(limit, src)
+}
+
+func (m *Manager) play(path string, wrap func(beep.StreamSeekCloser, beep.SampleRate) beep.Streamer) error {
 	m.Stop()
 
 	src, format, err := open(path)
@@ -68,8 +86,8 @@ func (m *Manager) Play(path string, loop bool) error {
 	}
 
 	var s beep.Streamer = src
-	if loop {
-		s = &looper{s: src, limit: format.SampleRate.N(maxLoopDuration)}
+	if wrap != nil {
+		s = wrap(src, format.SampleRate)
 	}
 	if format.SampleRate != sampleRate {
 		s = beep.Resample(3, format.SampleRate, sampleRate, s)

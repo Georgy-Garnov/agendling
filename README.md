@@ -200,9 +200,9 @@ unticked in the main window. You can turn them off in **Settings → New meeting
 ### Sound
 
 In **Settings → Sound** choose an MP3 or WAV file, or leave the field empty for the
-built-in chime. **▶ Test** plays it and **■ Stop** stops it. With *Repeat until stopped*,
-the sound loops for up to 3 minutes. **Mute Notifications** in the tray menu silences all sounds;
-popups still appear.
+built-in chime. **▶ Test** plays it and **■ Stop** stops it. Notification sounds stop after at most
+15 seconds, even when *Repeat until stopped* is enabled. The popup stays open.
+**Mute Notifications** in the tray menu silences all sounds; popups still appear.
 
 ### Tray menu
 

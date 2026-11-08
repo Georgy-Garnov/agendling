@@ -253,7 +253,7 @@ func (a *App) showSettingsAt(page string) {
 	testBox.PackStart(button("▶ Test", func() {
 		path := strings.TrimSpace(entryText(sound))
 		go func() {
-			if err := a.svc.Audio.Play(path, false); err != nil {
+			if err := a.svc.Audio.Play(path); err != nil {
 				ui(func() { a.message(dlg, gtk.MESSAGE_WARNING, "Sound: "+err.Error()) })
 			}
 		}()
@@ -264,7 +264,7 @@ func (a *App) showSettingsAt(page string) {
 	soundPage := newPage("sound")
 	soundPage.PackStart(card("Alert sound", "An MP3 or WAV file; leave empty for the built-in chime.", soundBox, true), false, false, 0)
 	soundPage.PackStart(card("Try it", "Plays the chosen sound once.", testBox, false), false, false, 0)
-	soundPage.PackStart(card("Repeat until stopped", "Keep playing until you press Stop Sound (at most 3 minutes).", loop, false), false, false, 0)
+	soundPage.PackStart(card("Repeat until stopped", "Keep playing until you press Stop Sound (at most 15 seconds).", loop, false), false, false, 0)
 
 	// ----- New meetings -----
 	newAlerts, _ := gtk.SwitchNew()
