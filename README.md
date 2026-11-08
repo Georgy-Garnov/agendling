@@ -175,9 +175,9 @@ in **Settings → Notifications**.
 ### Sound
 
 In **Settings → Notifications** choose an MP3 or WAV file, or leave the field empty for the
-built-in chime. **▶ Test** plays it and **■ Stop** stops it. With *Repeat the sound until stopped*,
-the sound loops for up to 3 minutes. **Mute Notifications** in the tray menu silences all sounds;
-popups still appear.
+built-in chime. **▶ Test** plays it and **■ Stop** stops it. Notification sounds stop after at most
+15 seconds, even when *Repeat the notification sound* is enabled. The popup stays open.
+**Mute Notifications** in the tray menu silences all sounds; popups still appear.
 
 ### Tray menu
 

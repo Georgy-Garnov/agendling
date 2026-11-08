@@ -64,9 +64,9 @@ func (s *Service) PlayAlertSound() {
 		return
 	}
 	go func() {
-		if err := s.Audio.Play(st.CustomSoundPath, st.LoopSound); err != nil {
+		if err := s.Audio.PlayAlert(st.CustomSoundPath, st.LoopSound); err != nil {
 			log.Printf("play %q: %v; falling back to built-in chime", st.CustomSoundPath, err)
-			_ = s.Audio.Play("", st.LoopSound)
+			_ = s.Audio.PlayAlert("", st.LoopSound)
 		}
 	}()
 }

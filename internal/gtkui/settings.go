@@ -238,7 +238,7 @@ func (a *App) showSettings() {
 	testBox.PackStart(button("▶ Test", func() {
 		path := strings.TrimSpace(entryText(sound))
 		go func() {
-			if err := a.svc.Audio.Play(path, false); err != nil {
+			if err := a.svc.Audio.Play(path); err != nil {
 				ui(func() { a.message(dlg, gtk.MESSAGE_WARNING, "Sound: "+err.Error()) })
 			}
 		}()
@@ -246,7 +246,7 @@ func (a *App) showSettings() {
 	testBox.PackStart(button("■ Stop", a.svc.Audio.Stop), false, false, 0)
 	ng.Attach(testBox, 1, 4, 1, 1)
 
-	loop, _ := gtk.CheckButtonNewWithLabel("Repeat the sound until stopped (max 3 minutes)")
+	loop, _ := gtk.CheckButtonNewWithLabel("Repeat the notification sound (max 15 seconds)")
 	loop.SetActive(st.LoopSound)
 	ng.Attach(loop, 1, 5, 1, 1)
 	newAlerts, _ := gtk.CheckButtonNewWithLabel("Notify (sound + popup) when a new event appears after sync")

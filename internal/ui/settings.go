@@ -201,7 +201,7 @@ func (a *App) showSettings() {
 								PushButton{Text: "▶ Test", OnClicked: func() {
 									path := strings.TrimSpace(soundPath.Text())
 									go func() {
-										if err := a.audio.Play(path, false); err != nil {
+										if err := a.audio.Play(path); err != nil {
 											dlg.Synchronize(func() { walk.MsgBox(dlg, "Sound", err.Error(), walk.MsgBoxIconWarning) })
 										}
 									}()
@@ -210,7 +210,7 @@ func (a *App) showSettings() {
 								HSpacer{},
 							}},
 							Label{},
-							CheckBox{AssignTo: &loop, Text: "Repeat the sound until stopped (max 3 minutes)", Checked: st.LoopSound},
+							CheckBox{AssignTo: &loop, Text: "Repeat the notification sound (max 15 seconds)", Checked: st.LoopSound},
 							Label{},
 							CheckBox{AssignTo: &newAlerts, Text: "Notify (sound + popup) when a new event appears after sync", Checked: !st.NewEventAlertsOff},
 							VSpacer{ColumnSpan: 2},
