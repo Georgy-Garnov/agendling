@@ -34,10 +34,14 @@ type App struct {
 	viewBtns [4]*gtk.ToggleButton
 	syncing  bool // suppresses toggled handlers while updating view buttons
 
-	trayEnd  func()
-	hasTray  bool
-	muteItem *systray.MenuItem
-	iconDay  int
+	trayEnd func()
+	hasTray bool
+	// iconified tracks the minimized state; hiddenAt is the position saved when hiding to the
+	// tray (X11 only: Wayland neither reports nor lets clients set window positions).
+	iconified bool
+	hiddenAt  *[2]int
+	muteItem  *systray.MenuItem
+	iconDay   int
 
 	quitting bool
 	alerts   map[*alertWindow]bool
@@ -185,11 +189,15 @@ func (a *App) buildMainWindow() error {
 			return false
 		}
 		if a.hasTray {
-			win.Hide()
+			a.hideMain()
 		} else {
 			win.Iconify()
 		}
 		return true
+	})
+	win.Connect("window-state-event", func(_ *gtk.Window, ev *gdk.Event) bool {
+		a.iconified = gdk.EventWindowStateNewFromEvent(ev).NewWindowState()&gdk.WINDOW_STATE_ICONIFIED != 0
+		return false
 	})
 	a.refreshIcon()
 	return nil
@@ -214,8 +222,26 @@ func (a *App) onViewChanged() {
 
 func (a *App) showMain() {
 	a.view.reload()
+	if p := a.hiddenAt; p != nil && !a.win.GetVisible() {
+		a.win.Move(p[0], p[1]) // window managers re-place a re-mapped window otherwise
+	}
 	a.win.ShowAll()
 	a.win.Present()
+}
+
+func (a *App) hideMain() {
+	x, y := a.win.GetPosition()
+	a.hiddenAt = &[2]int{x, y}
+	a.win.Hide()
+}
+
+// toggleMain is the tray icon click: hide a shown window, otherwise show it.
+func (a *App) toggleMain() {
+	if a.win.GetVisible() && !a.iconified {
+		a.hideMain()
+		return
+	}
+	a.showMain()
 }
 
 func (a *App) exit() {
@@ -345,7 +371,7 @@ func (a *App) startTray() {
 		settings := systray.AddMenuItem("Settings", "")
 		systray.AddSeparator()
 		quit := systray.AddMenuItem("Exit", "")
-		systray.SetOnTapped(func() { ui(a.showMain) })
+		systray.SetOnTapped(func() { ui(a.toggleMain) })
 		go func() {
 			for {
 				select {
