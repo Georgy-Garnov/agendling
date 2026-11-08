@@ -116,8 +116,37 @@ func RunTour(store *storage.Store, dir string) error {
 		shot(a.mw.Handle(), "zoom-week")
 		ui(func() { a.view.sb.hover = true; a.view.cw.Invalidate() })
 		shot(a.mw.Handle(), "zoom-week-scrollbar")
-		ui(func() { a.view.sb.hover = false; a.setZoom(core.CalendarZoomDefault, -1) })
+		ui(func() { a.view.sb.hover = false; a.view.SetMode(View2Week) })
+		shot(a.mw.Handle(), "zoom-2weeks")
+		ui(func() { a.setZoom(core.CalendarZoomDefault, -1) })
 		ui(func() { a.view.SetMode(ViewMonth) })
+
+		// "+N more" opens the day's events over its cell.
+		var pop win.HWND
+		ui(func() {
+			for _, h := range a.view.hits {
+				if h.kind == hitMore {
+					a.view.showDayPopup(h.day, h.cell)
+					break
+				}
+			}
+			if a.view.dayPop != nil {
+				pop = a.view.dayPop.dlg.Handle()
+			}
+		})
+		if pop == 0 {
+			fail(fmt.Errorf("no +N more in the month"))
+		} else if main, mrc := grab(a.mw.Handle()); main != nil {
+			if img, prc := grab(pop); img != nil {
+				overlay(main, img, int(prc.Left-mrc.Left), int(prc.Top-mrc.Top))
+				fail(savePNG(main, filepath.Join(dir, "day-popup.png")))
+			}
+		}
+		ui(func() {
+			if a.view.dayPop != nil {
+				a.view.dayPop.close()
+			}
+		})
 		ui(func() { a.view.SetMode(ViewWeek) })
 
 		// The calendar dropdown over the window, with one calendar hidden.
@@ -257,6 +286,34 @@ func RunTour(store *storage.Store, dir string) error {
 			}
 		})
 		shot(a.mw.Handle(), "after-settings-ok")
+		// Many calendars: the dropdown stops at the screen and scrolls.
+		ui(func() {
+			for i := 1; i <= 40; i++ {
+				fail(store.SaveSource(&model.CalendarSource{Name: fmt.Sprintf("Team calendar %d", i), Type: model.SourceLocal,
+					Color: "#8e24aa", Enabled: true}))
+			}
+		})
+		var many win.HWND
+		ui(func() {
+			a.toggleCalPicker()
+			if a.picker != nil {
+				many = a.picker.dlg.Handle()
+			}
+		})
+		if many == 0 {
+			fail(fmt.Errorf("calendar dropdown did not open"))
+		} else {
+			shot(many, "calendars-many")
+			ui(func() {
+				wheelDown := uintptr(0xFF88) << 16 // WHEEL_DELTA -120 in the high word
+				for range 6 {
+					win.SendMessage(a.picker.list.Handle(), win.WM_MOUSEWHEEL, wheelDown, 0)
+				}
+				a.picker.sb.hover = true
+			})
+			shot(many, "calendars-many-scrolled")
+			ui(func() { a.picker.close() })
+		}
 		ui(a.exit)
 	}()
 	if err := a.Run(false); err != nil {
