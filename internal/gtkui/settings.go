@@ -375,8 +375,12 @@ func (a *App) showSettingsAt(page string) {
 		body.PackStart(pages[p.Key], true, true, 0)
 		scroll, _ := gtk.ScrolledWindowNew(nil, nil)
 		scroll.SetPolicy(gtk.POLICY_NEVER, gtk.POLICY_AUTOMATIC)
-		addClass(body, "settings-page")
-		scroll.Add(body)
+		// The viewport of a scrolling page paints no background, so an outer box paints it,
+		// margins included.
+		page, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 0)
+		addClass(page, "settings-page")
+		page.PackStart(body, true, true, 0)
+		scroll.Add(page)
 		stack.AddNamed(scroll, p.Key)
 	}
 
