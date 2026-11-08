@@ -9,6 +9,20 @@ import (
 	"github.com/Georgy-Garnov/agendling/internal/storage"
 )
 
+func TestCalendarEventTitle(t *testing.T) {
+	e := &model.Event{Title: "First line\r\nSecond line\n\tThird line\u2028Last line"}
+	original := e.Title
+	if got := CalendarEventTitle(e); got != "First line Second line Third line Last line" {
+		t.Fatalf("calendar title = %q", got)
+	}
+	if EventTitle(e) != original {
+		t.Fatal("the full title must remain available outside the calendar grid")
+	}
+	if got := CalendarEventTitle(&model.Event{Title: " \n "}); got != "(No title)" {
+		t.Fatalf("blank calendar title = %q", got)
+	}
+}
+
 func TestParseReminders(t *testing.T) {
 	got, err := ParseReminders("5, 15m; 1h 2d 1w")
 	if err != nil {
