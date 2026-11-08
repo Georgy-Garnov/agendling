@@ -72,6 +72,10 @@ meeting or a freshly booked one.
 |---|---|
 | <img src="docs/screenshots/editor.png" width="360" alt="Event editor"> | <img src="docs/screenshots/account.png" width="400" alt="CalDAV account with calendars to sync"> |
 
+| All events of a busy day ("+N more") | Sounds per kind of alert and per calendar |
+|---|---|
+| <img src="docs/screenshots/day-popup.png" width="440" alt="Popup with all events of a day over the month view"> | <img src="docs/screenshots/sound.png" width="440" alt="Sound settings with maximum length and per-calendar sounds"> |
+
 | Settings | Linux (GTK 3) |
 |---|---|
 | <img src="docs/screenshots/settings.png" width="440" alt="Settings with section list and search"> | <img src="docs/screenshots/linux-calendars.png" width="440" alt="Linux week view with the calendars dropdown"> |
