@@ -346,6 +346,7 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 
 	var urlE, user, pass *gtk.Entry
 	var interval *gtk.ComboBoxText
+	var skipTLSVerify *gtk.CheckButton
 	if isCalDAV {
 		urlE, _ = gtk.EntryNew()
 		urlE.SetText(src.URL)
@@ -361,6 +362,9 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 		pass.SetVisibility(false)
 		pass.SetInputPurpose(gtk.INPUT_PURPOSE_PASSWORD)
 		add("App password:", pass)
+		skipTLSVerify, _ = gtk.CheckButtonNewWithLabel("Skip TLS certificate verification (private LAN only)")
+		skipTLSVerify.SetActive(src.SkipTLSVerify)
+		add("", skipTLSVerify)
 		interval, _ = gtk.ComboBoxTextNew()
 		idx := 2
 		for i, it := range core.SyncIntervals {
@@ -385,6 +389,7 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 			s.URL = strings.TrimSpace(entryText(urlE))
 			s.Username = strings.TrimSpace(entryText(user))
 			s.Password = entryText(pass)
+			s.SkipTLSVerify = skipTLSVerify.GetActive()
 			if i := interval.GetActive(); i >= 0 {
 				s.SyncInterval = core.SyncIntervals[i].Mins
 			}

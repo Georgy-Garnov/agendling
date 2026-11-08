@@ -284,6 +284,7 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 		name, urlEdit, user, pass, colorEd *walk.LineEdit
 		interval                           *walk.ComboBox
 		enabled                            *walk.CheckBox
+		skipTLSVerify                      *walk.CheckBox
 		swatch                             *walk.CustomWidget
 		testBtn, acceptBtn, cancelBtn      *walk.PushButton
 		testResult                         *walk.Label
@@ -311,6 +312,7 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 			s.URL = strings.TrimSpace(urlEdit.Text())
 			s.Username = strings.TrimSpace(user.Text())
 			s.Password = pass.Text()
+			s.SkipTLSVerify = skipTLSVerify.Checked()
 			if i := interval.CurrentIndex(); i >= 0 {
 				s.SyncInterval = core.SyncIntervals[i].Mins
 			}
@@ -355,6 +357,8 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 			LineEdit{AssignTo: &user, Text: src.Username},
 			Label{Text: "App password:"},
 			LineEdit{AssignTo: &pass, Text: src.Password, PasswordMode: true},
+			Label{},
+			CheckBox{AssignTo: &skipTLSVerify, Text: "Skip TLS certificate verification (private LAN only)", Checked: src.SkipTLSVerify},
 			Label{Text: "Sync:"},
 			ComboBox{AssignTo: &interval, Model: intervalLabels, CurrentIndex: intervalIdx},
 			Label{},

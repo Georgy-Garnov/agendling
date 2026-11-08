@@ -3,6 +3,7 @@ package caldav
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log"
@@ -84,7 +85,7 @@ func (e *Engine) Restart() {
 		return
 	}
 	for _, src := range sources {
-		if src.Type != model.SourceCalDAV || !src.Enabled {
+		if src.Type != model.SourceCalDAV || (!src.Enabled && src.DiscoveryURL == "") {
 			continue
 		}
 		ch := make(chan struct{}, 1)
@@ -149,8 +150,12 @@ func (e *Engine) worker(ctx context.Context, id int64, intervalMin int, trigger 
 
 // accountKey groups sources that talk to the same server account; rate limits apply per account.
 func accountKey(src *model.CalendarSource) string {
-	host := src.URL
-	if u, err := url.Parse(src.URL); err == nil && u.Host != "" {
+	target := src.URL
+	if src.CollectionURL != "" {
+		target = src.CollectionURL
+	}
+	host := target
+	if u, err := url.Parse(target); err == nil && u.Host != "" {
 		host = u.Host
 	}
 	return strings.ToLower(host) + "|" + src.Username
@@ -198,13 +203,21 @@ func (e *Engine) succeeded(acct string) {
 
 func (e *Engine) runOnce(ctx context.Context, id int64) {
 	src, err := e.store.Source(id)
-	if err != nil || !src.Enabled || src.Type != model.SourceCalDAV {
+	if err != nil || (!src.Enabled && src.DiscoveryURL == "") || src.Type != model.SourceCalDAV {
 		return
 	}
 	acct := accountKey(src)
 	lock := e.lockFor(acct)
 	lock.Lock()
 	defer lock.Unlock()
+	if ctx.Err() != nil {
+		return
+	}
+	// A preceding worker may have split or edited this source while we waited.
+	src, err = e.store.Source(id)
+	if err != nil || (!src.Enabled && src.DiscoveryURL == "") || src.Type != model.SourceCalDAV {
+		return
+	}
 
 	defer func() {
 		// Never let a malformed server response take the whole app down.
@@ -249,14 +262,43 @@ func (e *Engine) runOnce(ctx context.Context, id int64) {
 		e.succeeded(acct)
 	}
 	e.onStatus(Status{SourceID: id, Err: err, NewEvents: added})
+	e.startDiscoveredWorkers(ctx)
 	// Parsing a large REPORT response inflates the heap; hand it back to the OS right away
 	// instead of waiting for the lazy scavenger, keeping the idle footprint small.
 	debug.FreeOSMemory()
 }
 
+// startDiscoveredWorkers starts sources created while splitting a multi-calendar account.
+// Existing workers keep running; Restart cancels this context on reconfiguration.
+func (e *Engine) startDiscoveredWorkers(ctx context.Context) {
+	sources, err := e.store.Sources()
+	if err != nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if ctx.Err() != nil || e.trigger == nil {
+		return
+	}
+	for _, src := range sources {
+		if src.Type != model.SourceCalDAV || (!src.Enabled && src.DiscoveryURL == "") || e.trigger[src.ID] != nil {
+			continue
+		}
+		ch := make(chan struct{}, 1)
+		e.trigger[src.ID] = ch
+		go e.worker(ctx, src.ID, src.SyncInterval, ch)
+	}
+}
+
 // newHTTPClient builds the authenticated HTTP stack shared by go-webdav and raw requests.
 func newHTTPClient(src *model.CalendarSource) webdav.HTTPClient {
 	httpClient := &http.Client{Timeout: requestTimeout}
+	if src.SkipTLSVerify {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		// Explicit per-account opt-in for private servers with untrusted certificates.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		httpClient.Transport = transport
+	}
 	auth := webdav.HTTPClientWithBasicAuth(httpClient, src.Username, src.Password)
 	return etagFixClient{politeClient{auth}}
 }
@@ -273,26 +315,41 @@ func writePathFor(collections []string, configured string) string {
 
 // discovery tells where the event collections of a source live.
 type discovery struct {
-	endpoint    string // server root the paths refer to; "" means the configured URL
-	home        string // calendar home set ("" when the URL is a bare collection)
-	collections []string
+	endpoint       string // server root the paths refer to; "" means the configured URL
+	home           string // calendar home set ("" when the URL is a bare collection)
+	collections    []string
+	names          map[string]string // collection path -> server display name
+	allCollections []string          // full account list, even when this source is pinned
+	confirmed      bool              // account discovery succeeded
+	direct         bool              // configured URL is a collection
+	missing        bool              // a pinned collection was absent from the account list
 }
 
 // discover finds the calendar home set and the event collections of a source.
 func discover(ctx context.Context, hc webdav.HTTPClient, src *model.CalendarSource) (discovery, error) {
-	u, err := url.Parse(src.URL)
+	requestURL := src.URL
+	if src.DiscoveryURL != "" {
+		requestURL = src.DiscoveryURL
+	} else if src.CollectionURL != "" {
+		requestURL = src.CollectionURL
+	}
+	u, err := url.Parse(requestURL)
 	if err != nil {
 		return discovery{}, fmt.Errorf("invalid URL: %w", err)
 	}
-	c, err := caldav.NewClient(hc, src.URL)
+	c, err := caldav.NewClient(hc, requestURL)
 	if err != nil {
 		return discovery{}, err
 	}
-	direct := cleanDir(u.Path)
+	configured, err := url.Parse(src.URL)
+	if err != nil {
+		return discovery{}, err
+	}
+	direct := cleanDir(configured.Path)
 
-	var d discovery
+	d := discovery{names: map[string]string{}}
 	var cals []caldav.Calendar
-	principal, perr := c.FindCurrentUserPrincipal(ctx)
+	principal, perr := findCurrentUserPrincipal(ctx, hc, u)
 	if perr == nil {
 		var home *url.URL
 		if home, perr = findHomeSet(ctx, hc, u, principal); perr == nil {
@@ -315,31 +372,65 @@ func discover(ctx context.Context, hc webdav.HTTPClient, src *model.CalendarSour
 	if errors.As(perr, &te) {
 		return discovery{}, perr // not a discovery problem; the engine backs off
 	}
-	if perr != nil || len(cals) == 0 {
-		// Server without discovery support: treat the URL as the collection itself.
-		if direct == "/" {
-			if perr == nil {
-				perr = errors.New("no calendars found")
+	if perr != nil {
+		if src.DiscoveryURL != "" {
+			return discovery{}, fmt.Errorf("account discovery failed: %w", perr)
+		}
+		// Direct-only servers can still use their configured collection, but a
+		// failed listing is never permission to select a different write target.
+		if src.CollectionURL != "" {
+			bound, err := url.Parse(src.CollectionURL)
+			if err != nil {
+				return discovery{}, err
 			}
+			return discovery{collections: []string{bound.Path}}, nil
+		}
+		if direct == "/" {
 			return discovery{}, fmt.Errorf("calendar discovery failed: %w", perr)
 		}
+		log.Printf("caldav: discovery at %s failed: %v; trying configured collection", u.Redacted(), perr)
 		return discovery{collections: []string{direct}}, nil
 	}
-
-	for _, cal := range cals {
-		if cleanDir(cal.Path) == direct {
-			// URL points to a specific calendar
-			return discovery{endpoint: d.endpoint, collections: []string{cal.Path}}, nil
-		}
-	}
+	d.confirmed = true
 	for _, cal := range cals {
 		if supportsEvents(cal) {
-			d.collections = append(d.collections, cal.Path)
+			p := cleanDir(cal.Path)
+			d.names[p] = cal.Name
+			d.allCollections = append(d.allCollections, p)
 		}
+	}
+	pinned := src.CalendarPath
+	if src.CollectionURL != "" {
+		bound, err := url.Parse(src.CollectionURL)
+		if err != nil {
+			return discovery{}, err
+		}
+		pinned = cleanDir(bound.Path)
+	}
+	for _, p := range d.allCollections {
+		if p == direct {
+			d.direct = true
+		}
+	}
+	if pinned != "" {
+		pinned = cleanDir(pinned)
+		d.collections = []string{pinned}
+		d.missing = true
+		for _, p := range d.allCollections {
+			if p == pinned {
+				d.missing = false
+				break
+			}
+		}
+	} else if d.direct {
+		d.collections = []string{direct}
+	} else {
+		d.collections = append([]string(nil), d.allCollections...)
 	}
 	if len(d.collections) == 0 {
 		return discovery{}, errors.New("account has no event calendars")
 	}
+
 	return d, nil
 }
 
@@ -383,14 +474,44 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 		if err != nil {
 			return nil, err
 		}
+		if err := reconcileDiscoveredCalendars(store, src, &d); err != nil {
+			return nil, fmt.Errorf("reconcile calendars: %w", err)
+		}
+		if d.missing && src.Enabled {
+			return nil, fmt.Errorf("calendar %q is no longer available; its write target has not been changed", src.Name)
+		}
+
 		st = syncState{Version: stateVersion, Endpoint: d.endpoint, Home: d.home, Collections: d.collections}
 		log.Printf("sync %q: discovered %d calendar(s) on %s", src.Name, len(st.Collections), st.endpoint(src.URL))
 	}
-	c, err := caldav.NewClient(hc, st.endpoint(src.URL))
+	if !src.Enabled {
+		if full {
+			st.FullAt = now
+			return nil, saveState(store, src.ID, st)
+		}
+		return nil, nil
+	}
+	endpointURL := st.endpoint(src.URL)
+	if src.CollectionURL != "" {
+		endpointURL = src.CollectionURL
+	}
+	c, err := caldav.NewClient(hc, endpointURL)
 	if err != nil {
 		return nil, err
 	}
-	src.CalendarPath = writePathFor(st.Collections, src.CalendarPath)
+	if src.CollectionURL != "" {
+		bound, err := url.Parse(src.CollectionURL)
+		if err != nil {
+			return nil, err
+		}
+		if len(st.Collections) != 1 || cleanDir(st.Collections[0]) != cleanDir(bound.Path) {
+			_ = saveState(store, src.ID, syncState{})
+			return nil, errors.New("cached collection does not match the pinned calendar; refresh required")
+		}
+		src.CalendarPath = cleanDir(bound.Path)
+	} else {
+		src.CalendarPath = writePathFor(st.Collections, src.CalendarPath)
+	}
 
 	pushErr := push(ctx, c, store, src)
 	var te *ThrottledError
@@ -398,7 +519,7 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 		return nil, pushErr
 	}
 
-	tags, err := fetchCTags(ctx, hc, st.endpoint(src.URL), &st)
+	tags, err := fetchCTags(ctx, hc, endpointURL, &st)
 	if errors.As(err, &te) {
 		return nil, err
 	}
@@ -417,7 +538,7 @@ func SyncSource(ctx context.Context, store *storage.Store, src *model.CalendarSo
 		return nil, errors.Join(pushErr, saveState(store, src.ID, st))
 	}
 
-	endpoint, err := url.Parse(st.endpoint(src.URL))
+	endpoint, err := url.Parse(endpointURL)
 	if err != nil {
 		return nil, err
 	}
@@ -541,6 +662,22 @@ func pushSeries(ctx context.Context, c *caldav.Client, store *storage.Store, src
 		}
 	}
 
+	if href != "" && src.CollectionURL != "" {
+		bound, err := url.Parse(src.CollectionURL)
+		if err != nil {
+			return err
+		}
+		ref, err := url.Parse(href)
+		if err != nil {
+			return err
+		}
+		target := bound.ResolveReference(ref)
+		if target.Scheme != bound.Scheme || !strings.EqualFold(target.Host, bound.Host) || !strings.HasPrefix(target.Path, cleanDir(bound.Path)) {
+			return errors.New("pending resource is outside the pinned calendar; no server change was made")
+		}
+		href = target.Path
+	}
+
 	if master == nil || master.Deleted {
 		// Whole series deleted locally.
 		if href != "" {
@@ -591,5 +728,8 @@ func sanitize(uid string) string {
 // TestConnection verifies credentials and discovery for the Settings dialog.
 func TestConnection(ctx context.Context, src *model.CalendarSource) (int, error) {
 	d, err := discover(ctx, newHTTPClient(src), src)
+	if err == nil && d.missing {
+		err = fmt.Errorf("calendar %q is no longer available", src.Name)
+	}
 	return len(d.collections), err
 }

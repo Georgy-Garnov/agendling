@@ -185,6 +185,12 @@ popups still appear.
 keeps Agendling running in the tray; use **Exit** to quit. Launching Agendling again while it's
 running brings its window to the front instead of starting a second copy.
 
+For a private LAN server with an untrusted certificate, enable **Skip TLS certificate verification (private LAN only)** in its CalDAV account settings. This applies to connection tests and synchronization and is saved per account. Certificate verification is enabled by default.
+
+Accounts with multiple event calendars are separated automatically during synchronization. Each calendar appears with its server name and its own color in the calendar list and in the event editor's calendar picker. New events are written to the selected calendar. Existing downloaded events and pending changes are assigned to their original calendar; pending new events without a server path stay in the previous default calendar. Each resulting calendar can be configured independently in Settings.
+
+The account discovery address is retained so a full refresh also finds calendars added later. Existing subscriptions are reused, and missing calendars report an error instead of switching the write target. If calendar discovery changes settings while their dialog is open, reopen the dialog before saving. Conflicting pending copies in duplicate subscriptions are retained and reported rather than silently merged. Disable a calendar to hide it while keeping automatic account discovery.
+
 ## CalDAV providers
 
 Agendling uses standard CalDAV (RFC 4791) with basic authentication. Most providers require an

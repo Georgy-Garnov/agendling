@@ -15,20 +15,28 @@ const (
 
 // CalendarSource is either a local-only calendar or a remote CalDAV account/collection.
 type CalendarSource struct {
-	ID           int64
-	Name         string
-	Type         SourceType
-	URL          string // server root or direct calendar collection URL
-	Username     string
-	Password     string
-	Color        string // "#RRGGBB"
-	SyncInterval int    // minutes; 0 = manual only
-	Enabled      bool
+	ID            int64
+	Name          string
+	Type          SourceType
+	URL           string // server root or direct calendar collection URL
+	Username      string
+	Password      string
+	Color         string // "#RRGGBB"
+	SyncInterval  int    // minutes; 0 = manual only
+	SkipTLSVerify bool   // accept unverified server certificates for this account
+	Enabled       bool
 
 	// CalendarPath is the discovered collection path used for writes (CalDAV only).
 	CalendarPath string
-	LastSync     time.Time
-	LastError    string
+	// CollectionURL pins reads and writes independently of account discovery.
+	CollectionURL string
+	// DiscoveryURL is retained by the account's first calendar to find new siblings.
+	DiscoveryURL  string
+	DiscoveryName string
+	// Revision protects settings snapshots against concurrent discovery changes.
+	Revision  int64
+	LastSync  time.Time
+	LastError string
 }
 
 func (s *CalendarSource) IsLocal() bool { return s.Type == SourceLocal }

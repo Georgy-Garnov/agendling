@@ -18,8 +18,8 @@ import (
 const fullRefreshEvery = 24 * time.Hour
 
 // stateVersion invalidates caches written by builds that fetched collections differently
-// (2: partition hosts and plain calendar-data; earlier caches may hold tags of empty pulls).
-const stateVersion = 2
+// (4: pinned collections and retained account discovery; 3: separate sources).
+const stateVersion = 4
 
 // syncState is cached per source between syncs so an unchanged account costs a single PROPFIND.
 type syncState struct {

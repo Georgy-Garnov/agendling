@@ -5,6 +5,7 @@ package storage
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -31,6 +32,11 @@ CREATE TABLE IF NOT EXISTS sources (
 	calendar_path TEXT NOT NULL DEFAULT '',
 	last_sync     INTEGER NOT NULL DEFAULT 0,
 	last_error    TEXT NOT NULL DEFAULT '',
+	skip_tls_verify INTEGER NOT NULL DEFAULT 0,
+	collection_url TEXT NOT NULL DEFAULT '',
+	discovery_url TEXT NOT NULL DEFAULT '',
+	discovery_name TEXT NOT NULL DEFAULT '',
+	revision INTEGER NOT NULL DEFAULT 1,
 	sync_state    TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS events (
@@ -89,6 +95,29 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'skip_tls_verify'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := db.Exec(`ALTER TABLE sources ADD COLUMN skip_tls_verify INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return err
+		}
+	}
+	for _, column := range []struct{ name, definition string }{
+		{"collection_url", "TEXT NOT NULL DEFAULT ''"},
+		{"discovery_url", "TEXT NOT NULL DEFAULT ''"},
+		{"discovery_name", "TEXT NOT NULL DEFAULT ''"},
+		{"revision", "INTEGER NOT NULL DEFAULT 1"},
+	} {
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = ?`, column.name).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			if _, err := db.Exec("ALTER TABLE sources ADD COLUMN " + column.name + " " + column.definition); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -139,7 +168,7 @@ func (s *Store) notify() {
 
 // ---------- Sources ----------
 
-const sourceCols = `id, name, type, url, username, password, color, sync_interval, enabled, calendar_path, last_sync, last_error`
+const sourceCols = `id, name, type, url, username, password, color, sync_interval, enabled, calendar_path, last_sync, last_error, skip_tls_verify, collection_url, discovery_url, discovery_name, revision`
 
 func scanSource(sc interface{ Scan(...any) error }) (*model.CalendarSource, error) {
 	var src model.CalendarSource
@@ -147,7 +176,7 @@ func scanSource(sc interface{ Scan(...any) error }) (*model.CalendarSource, erro
 	var enabled int
 	var lastSync int64
 	if err := sc.Scan(&src.ID, &src.Name, &typ, &src.URL, &src.Username, &pw, &src.Color,
-		&src.SyncInterval, &enabled, &src.CalendarPath, &lastSync, &src.LastError); err != nil {
+		&src.SyncInterval, &enabled, &src.CalendarPath, &lastSync, &src.LastError, &src.SkipTLSVerify, &src.CollectionURL, &src.DiscoveryURL, &src.DiscoveryName, &src.Revision); err != nil {
 		return nil, err
 	}
 	src.Type = model.SourceType(typ)
@@ -184,6 +213,9 @@ func (s *Store) Source(id int64) (*model.CalendarSource, error) {
 	return scanSource(s.db.QueryRow(`SELECT `+sourceCols+` FROM sources WHERE id = ?`, id))
 }
 
+// ErrSourceChanged prevents a stale settings dialog from overwriting discovery or a newer edit.
+var ErrSourceChanged = errors.New("calendar settings changed during synchronization; reopen the calendar settings and try again")
+
 func (s *Store) SaveSource(src *model.CalendarSource) error {
 	pw, err := secret.Encrypt(src.Password)
 	if err != nil {
@@ -192,23 +224,47 @@ func (s *Store) SaveSource(src *model.CalendarSource) error {
 	s.mu.Lock()
 	if src.ID == 0 {
 		var res sql.Result
-		res, err = s.db.Exec(`INSERT INTO sources (name, type, url, username, password, color, sync_interval, enabled, calendar_path)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath)
+		res, err = s.db.Exec(`INSERT INTO sources (name, type, url, username, password, color, sync_interval, enabled, calendar_path, skip_tls_verify)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath, b2i(src.SkipTLSVerify))
 		if err == nil {
 			src.ID, err = res.LastInsertId()
+			src.Revision = 1
 		}
 	} else {
-		// Cached sync state belongs to the old account when the server or login changes.
-		_, err = s.db.Exec(`UPDATE sources SET sync_state = CASE WHEN url=? AND username=? THEN sync_state ELSE '' END,
-			name=?, type=?, url=?, username=?, password=?, color=?, sync_interval=?, enabled=?, calendar_path=?
-			WHERE id=?`,
-			src.URL, src.Username,
-			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath, src.ID)
+		// Only an explicit server/login change clears the internal binding. Settings
+		// may never restore discovery fields from their own (possibly stale) copy.
+		var res sql.Result
+		res, err = s.db.Exec(`UPDATE sources SET
+		 sync_state = CASE WHEN url=? AND username=? THEN sync_state ELSE '' END,
+		 collection_url = CASE WHEN url=? AND username=? THEN collection_url ELSE '' END,
+		 discovery_url = CASE WHEN url=? AND username=? THEN discovery_url ELSE '' END,
+		 discovery_name = CASE WHEN url=? AND username=? THEN discovery_name ELSE '' END,
+		 calendar_path = CASE WHEN url=? AND username=? THEN calendar_path ELSE '' END,
+		 name=?, type=?, url=?, username=?, password=?, color=?, sync_interval=?, enabled=?, skip_tls_verify=?, revision=revision+1
+		 WHERE id=? AND revision=?`,
+			src.URL, src.Username, src.URL, src.Username, src.URL, src.Username, src.URL, src.Username, src.URL, src.Username,
+			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), b2i(src.SkipTLSVerify), src.ID, src.Revision)
+		if err == nil {
+			var n int64
+			n, err = res.RowsAffected()
+			if err == nil && n != 1 {
+				err = ErrSourceChanged
+			}
+			if err == nil {
+				src.Revision++
+			}
+		}
 	}
 	s.mu.Unlock()
 	if err == nil {
-		s.notify()
+		// Return the stored binding too, especially after an explicit account change.
+		var current *model.CalendarSource
+		current, err = s.Source(src.ID)
+		if err == nil {
+			*src = *current
+			s.notify()
+		}
 	}
 	return err
 }

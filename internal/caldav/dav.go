@@ -39,6 +39,38 @@ func propfind(ctx context.Context, hc webdav.HTTPClient, u *url.URL, depth, body
 	return nil
 }
 
+// findCurrentUserPrincipal preserves the configured URL's trailing slash.
+// go-webdav's path.Join removes it, which some servers route to a non-DAV handler.
+func findCurrentUserPrincipal(ctx context.Context, hc webdav.HTTPClient, endpoint *url.URL) (string, error) {
+	const body = `<d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>`
+	var ms struct {
+		Responses []struct {
+			Propstat []struct {
+				Prop struct {
+					Principal struct {
+						Href string `xml:"DAV: href"`
+					} `xml:"DAV: current-user-principal"`
+				} `xml:"DAV: prop"`
+			} `xml:"DAV: propstat"`
+		} `xml:"DAV: response"`
+	}
+	if err := propfind(ctx, hc, endpoint, "0", body, &ms); err != nil {
+		return "", err
+	}
+	for _, r := range ms.Responses {
+		for _, ps := range r.Propstat {
+			if href := strings.TrimSpace(ps.Prop.Principal.Href); href != "" {
+				ref, err := url.Parse(href)
+				if err != nil {
+					return "", fmt.Errorf("invalid principal URL: %w", err)
+				}
+				return endpoint.ResolveReference(ref).Path, nil
+			}
+		}
+	}
+	return "", errors.New("server reports no current-user-principal")
+}
+
 const homeSetPropfind = `<?xml version="1.0" encoding="utf-8"?>
 <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:prop><c:calendar-home-set/></d:prop></d:propfind>`
 
