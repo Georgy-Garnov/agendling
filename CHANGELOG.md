@@ -9,6 +9,8 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 - An event whose title, description or location contains a carriage return (as some servers send
   it) no longer fails to save or sync: line breaks of any kind are now written correctly.
+- Event titles with line breaks (common in synced invitations) are shown on one line in the
+  calendar grid instead of being clipped (#7, thanks [@ciesinsk](https://github.com/ciesinsk)).
 
 ## [0.4.0] - 2026-11-08
 

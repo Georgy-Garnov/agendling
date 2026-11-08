@@ -339,10 +339,7 @@ func (v *CalView) paintEventBox(c *walk.Canvas, px func(int) int, r walk.Rectang
 	c.FillRectanglePixels(v.brush(wc(core.RGB{R: col.R(), G: col.G(), B: col.B()}.Blend(0.78))), r)
 	c.FillRectanglePixels(v.brush(col), walk.Rectangle{X: r.X, Y: r.Y, Width: px(3), Height: r.Height})
 	inner := walk.Rectangle{X: r.X + px(6), Y: r.Y + px(1), Width: r.Width - px(8), Height: r.Height - px(2)}
-	title := o.Event.Title
-	if title == "" {
-		title = "(No title)"
-	}
+	title := core.CalendarEventTitle(o.Event)
 	timeStr := o.Start.Format("15:04") + "–" + o.End.Format("15:04")
 	if inner.Height >= px(32) {
 		v.text(c, title, v.bold, colText, walk.Rectangle{X: inner.X, Y: inner.Y, Width: inner.Width, Height: px(15)}, walk.TextSingleLine)
@@ -360,10 +357,7 @@ func (v *CalView) paintEventBox(c *walk.Canvas, px func(int) int, r walk.Rectang
 func (v *CalView) paintAllDayBar(c *walk.Canvas, px func(int) int, r walk.Rectangle, o model.Occurrence) {
 	col := v.colorOf(o)
 	c.FillRectanglePixels(v.brush(col), r)
-	title := o.Event.Title
-	if title == "" {
-		title = "(No title)"
-	}
+	title := core.CalendarEventTitle(o.Event)
 	if !o.Event.AllDay {
 		title = o.Start.Format("15:04") + " " + title
 	}
@@ -436,10 +430,7 @@ func (v *CalView) paintCells(c *walk.Canvas, b walk.Rectangle, px func(int) int,
 				} else {
 					col := v.colorOf(o)
 					c.FillEllipsePixels(v.brush(col), walk.Rectangle{X: r.X + px(2), Y: r.Y + r.Height/2 - px(3), Width: px(7), Height: px(7)})
-					title := o.Event.Title
-					if title == "" {
-						title = "(No title)"
-					}
+					title := core.CalendarEventTitle(o.Event)
 					v.text(c, o.Start.Format("15:04")+" "+title, v.small, colText,
 						walk.Rectangle{X: r.X + px(12), Y: r.Y, Width: r.Width - px(12), Height: r.Height}, walk.TextSingleLine|walk.TextVCenter)
 					v.hits = append(v.hits, hit{kind: hitEvent, r: r, occ: o})

@@ -325,7 +325,7 @@ func (v *calView) paintEventBox(cr *cairo.Context, r rect, o model.Occurrence, c
 	fill(cr, r, col.Blend(0.78))
 	fill(cr, rect{r.x, r.y, 3, r.h}, col)
 	inner := rect{r.x + 6, r.y + 1, r.w - 8, r.h - 2}
-	title := core.EventTitle(o.Event)
+	title := core.CalendarEventTitle(o.Event)
 	if inner.h >= 32 {
 		v.text(cr, title, v.bold, core.ColText, rect{inner.x, inner.y, inner.w, 16}, single)
 		rest := o.Start.Format("15:04") + "–" + o.End.Format("15:04")
@@ -343,7 +343,7 @@ func (v *calView) paintEventBox(cr *cairo.Context, r rect, o model.Occurrence, c
 
 func (v *calView) paintAllDayBar(cr *cairo.Context, r rect, o model.Occurrence) {
 	fill(cr, r, v.colorOf(o))
-	title := core.EventTitle(o.Event)
+	title := core.CalendarEventTitle(o.Event)
 	if !o.Event.AllDay {
 		title = o.Start.Format("15:04") + " " + title
 	}
@@ -406,7 +406,7 @@ func (v *calView) paintCells(cr *cairo.Context, w, h float64, from time.Time, we
 					v.paintAllDayBar(cr, r, o)
 				} else {
 					circle(cr, r.x+5.5, r.y+r.h/2, 3.5, v.colorOf(o))
-					v.text(cr, o.Start.Format("15:04")+" "+core.EventTitle(o.Event), v.small, core.ColText,
+					v.text(cr, o.Start.Format("15:04")+" "+core.CalendarEventTitle(o.Event), v.small, core.ColText,
 						rect{r.x + 12, r.y, r.w - 12, r.h}, single|vcenter)
 					v.hits = append(v.hits, hit{kind: hitEvent, r: r, occ: o})
 				}

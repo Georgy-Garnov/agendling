@@ -230,6 +230,11 @@ func EventTitle(e *model.Event) string {
 	return e.Title
 }
 
+// CalendarEventTitle flattens imported multiline titles for compact event boxes.
+func CalendarEventTitle(e *model.Event) string {
+	return strings.Join(strings.Fields(EventTitle(e)), " ")
+}
+
 var RepeatPresets = []struct{ Label, Rule string }{
 	{"Does not repeat", ""},
 	{"Daily", "FREQ=DAILY"},
