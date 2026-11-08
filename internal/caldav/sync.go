@@ -234,6 +234,7 @@ func (e *Engine) runOnce(ctx context.Context, id int64) {
 	if ctx.Err() != nil {
 		return
 	}
+	err = syncError(err)
 	_ = e.store.SetSyncStatus(id, src.CalendarPath, time.Now(), err)
 	var te *ThrottledError
 	switch {
@@ -257,6 +258,11 @@ func (e *Engine) runOnce(ctx context.Context, id int64) {
 // newHTTPClient builds the authenticated HTTP stack shared by go-webdav and raw requests.
 func newHTTPClient(src *model.CalendarSource) webdav.HTTPClient {
 	httpClient := &http.Client{Timeout: requestTimeout}
+	if cfg := tlsConfigFor(src.TrustedCert); cfg != nil {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = cfg
+		httpClient.Transport = transport
+	}
 	auth := webdav.HTTPClientWithBasicAuth(httpClient, src.Username, src.Password)
 	return etagFixClient{politeClient{auth}}
 }

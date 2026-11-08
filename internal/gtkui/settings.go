@@ -779,6 +779,7 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 	add("", enabledRow)
 
 	var urlE, user, pass *gtk.Entry
+	trusted := src.TrustedCert // a certificate trusted for this account, e.g. a NAS's self-signed one
 	var interval *gtk.ComboBoxText
 	// Calendar selection: filled from the last sync for existing accounts, refreshed by
 	// "Test connection". fresh tells whether the list belongs to the URL now entered.
@@ -828,6 +829,7 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 			s.URL = strings.TrimSpace(entryText(urlE))
 			s.Username = strings.TrimSpace(entryText(user))
 			s.Password = entryText(pass)
+			s.TrustedCert = trusted
 			if i := interval.GetActive(); i >= 0 {
 				s.SyncInterval = core.SyncIntervals[i].Mins
 			}
@@ -863,12 +865,34 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 		pass.SetVisibility(false)
 		pass.SetInputPurpose(gtk.INPUT_PURPOSE_PASSWORD)
 		add("App password", pass)
+
+		certBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 10)
+		certText := captionLabel("")
+		certBox.PackStart(certText, true, true, 0)
+		var showCert func()
+		forget := button("Forget", func() {
+			trusted = ""
+			showCert()
+		})
+		forget.SetVAlign(gtk.ALIGN_CENTER)
+		certBox.PackEnd(forget, false, false, 0)
+		showCert = func() {
+			certText.SetText("Certificate trusted, SHA-256 " + caldav.ShortFingerprint(trusted))
+			certText.SetTooltipText(caldav.FormatFingerprint(trusted))
+			certBox.SetVisible(trusted != "")
+		}
+		certBox.ShowAll()
+		certBox.SetNoShowAll(true) // shown only while a certificate is trusted
+		showCert()
+		add("", certBox)
+
 		testRow, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 10)
 		result, _ := gtk.LabelNew("")
 		result.SetXAlign(0)
 		result.SetLineWrap(true)
 		var testBtn *gtk.Button
-		testBtn = button("Test connection", func() {
+		var runTest func()
+		runTest = func() {
 			s := collect()
 			testBtn.SetSensitive(false)
 			result.SetText("Connecting…")
@@ -878,6 +902,15 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 				cals, err := caldav.TestConnection(ctx, s)
 				ui(func() {
 					testBtn.SetSensitive(true)
+					if cert := caldav.UntrustedCertificate(err); cert != nil {
+						result.SetMarkup(`<span foreground="#c42b1c">The server's certificate is not trusted.</span>`)
+						if a.confirmCertificate(dlg, caldav.DescribeCertificate(cert)) {
+							trusted = caldav.CertFingerprint(cert)
+							showCert()
+							runTest()
+						}
+						return
+					}
 					if err != nil {
 						result.SetMarkup(`<span foreground="#c42b1c">` + glib.MarkupEscapeText(err.Error()) + `</span>`)
 						return
@@ -887,7 +920,8 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 					fresh = true
 				})
 			}()
-		})
+		}
+		testBtn = button("Test connection", runTest)
 		testRow.PackStart(testBtn, false, false, 0)
 		testRow.PackStart(result, true, true, 0)
 		add("", testRow)

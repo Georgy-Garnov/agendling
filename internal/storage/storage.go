@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS sources (
 	last_sync     INTEGER NOT NULL DEFAULT 0,
 	last_error    TEXT NOT NULL DEFAULT '',
 	sync_state    TEXT NOT NULL DEFAULT '',
-	hidden_collections TEXT NOT NULL DEFAULT ''
+	hidden_collections TEXT NOT NULL DEFAULT '',
+	trusted_cert  TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS events (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,6 +108,14 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = 'trusted_cert'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := db.Exec(`ALTER TABLE sources ADD COLUMN trusted_cert TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -157,7 +166,7 @@ func (s *Store) notify() {
 
 // ---------- Sources ----------
 
-const sourceCols = `id, name, type, url, username, password, color, sync_interval, enabled, calendar_path, last_sync, last_error, hidden_collections`
+const sourceCols = `id, name, type, url, username, password, color, sync_interval, enabled, calendar_path, last_sync, last_error, hidden_collections, trusted_cert`
 
 func scanSource(sc interface{ Scan(...any) error }) (*model.CalendarSource, error) {
 	var src model.CalendarSource
@@ -165,7 +174,7 @@ func scanSource(sc interface{ Scan(...any) error }) (*model.CalendarSource, erro
 	var enabled int
 	var lastSync int64
 	if err := sc.Scan(&src.ID, &src.Name, &typ, &src.URL, &src.Username, &pw, &src.Color,
-		&src.SyncInterval, &enabled, &src.CalendarPath, &lastSync, &src.LastError, &hidden); err != nil {
+		&src.SyncInterval, &enabled, &src.CalendarPath, &lastSync, &src.LastError, &hidden, &src.TrustedCert); err != nil {
 		return nil, err
 	}
 	if hidden != "" {
@@ -221,19 +230,19 @@ func (s *Store) SaveSource(src *model.CalendarSource) error {
 	s.mu.Lock()
 	if src.ID == 0 {
 		var res sql.Result
-		res, err = s.db.Exec(`INSERT INTO sources (name, type, url, username, password, color, sync_interval, enabled, calendar_path, hidden_collections)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath, hidden)
+		res, err = s.db.Exec(`INSERT INTO sources (name, type, url, username, password, color, sync_interval, enabled, calendar_path, hidden_collections, trusted_cert)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath, hidden, src.TrustedCert)
 		if err == nil {
 			src.ID, err = res.LastInsertId()
 		}
 	} else {
 		// Cached sync state belongs to the old account when the server or login changes.
 		_, err = s.db.Exec(`UPDATE sources SET sync_state = CASE WHEN url=? AND username=? THEN sync_state ELSE '' END,
-			name=?, type=?, url=?, username=?, password=?, color=?, sync_interval=?, enabled=?, calendar_path=?, hidden_collections=?
+			name=?, type=?, url=?, username=?, password=?, color=?, sync_interval=?, enabled=?, calendar_path=?, hidden_collections=?, trusted_cert=?
 			WHERE id=?`,
 			src.URL, src.Username,
-			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath, hidden, src.ID)
+			src.Name, string(src.Type), src.URL, src.Username, pw, src.Color, src.SyncInterval, b2i(src.Enabled), src.CalendarPath, hidden, src.TrustedCert, src.ID)
 	}
 	s.mu.Unlock()
 	if err == nil {

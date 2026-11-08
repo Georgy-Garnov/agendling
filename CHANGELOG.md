@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Trust a server's own certificate** (a NAS or home server with a self-signed one): Test
+  connection shows the certificate — issued to, issued by, valid until, SHA-256 — and offers
+  *Trust this certificate*. The account then accepts exactly that certificate besides those the
+  system trusts; a different one stops sync with a clear message. *Forget* in the account undoes it.
 - **Calendar zoom** from 80% to 160%: **− 100% +** in the status bar, Ctrl + mouse wheel (keeping what
   is under the mouse in place), Ctrl + Plus / Minus and Ctrl + 0 to reset; the level is kept across
   restarts (#6, thanks [@ciesinsk](https://github.com/ciesinsk)). In the month and 2-week views a

@@ -95,6 +95,7 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 		choices             []core.CalendarChoice
 		toggles             []*toggleSwitch
 		fresh               bool // the calendar list belongs to the URL now entered
+		trusted             = src.TrustedCert
 	)
 	shownChoices := func() []core.CalendarChoice {
 		res := append([]core.CalendarChoice(nil), choices...)
@@ -133,6 +134,7 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 			s.URL = strings.TrimSpace(urlEdit.Text())
 			s.Username = strings.TrimSpace(user.Text())
 			s.Password = pass.Text()
+			s.TrustedCert = trusted
 			if i := interval.CurrentIndex(); i >= 0 {
 				s.SyncInterval = core.SyncIntervals[i].Mins
 			}
@@ -164,10 +166,27 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 		pass, _ = walk.NewLineEdit(formRow(server, "App password"))
 		pass.SetText(src.Password)
 		pass.SetPasswordMode(true)
+		// A certificate trusted for this account (e.g. a NAS with a self-signed one).
+		certRow := formRow(server, "Certificate")
+		certText := label(certRow, "", uiFont(10, false), flText)
+		walk.NewHSpacer(certRow)
+		var showCert func()
+		pushButton(certRow, "Forget", 80, func() {
+			trusted = ""
+			showCert()
+		})
+		showCert = func() {
+			certRow.Parent().(walk.Widget).SetVisible(trusted != "")
+			certText.SetText("Trusted, SHA-256 " + caldav.ShortFingerprint(trusted))
+			certText.SetToolTipText(caldav.FormatFingerprint(trusted))
+		}
+		showCert()
+
 		testRow := formRow(server, "")
 		var testBtn *walk.PushButton
 		var testResult *walk.TextLabel
-		testBtn = pushButton(testRow, "Test connection", 140, func() {
+		var runTest func()
+		runTest = func() {
 			s := collect()
 			testBtn.SetEnabled(false)
 			testResult.SetText("Connecting…")
@@ -178,6 +197,16 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 				cals, err := caldav.TestConnection(ctx, s)
 				dlg.Synchronize(func() {
 					testBtn.SetEnabled(true)
+					if cert := caldav.UntrustedCertificate(err); cert != nil {
+						testResult.SetText("The server's certificate is not trusted.")
+						testResult.SetTextColor(walk.RGB(0xc4, 0x2b, 0x1c))
+						if a.confirmCertificate(dlg, caldav.DescribeCertificate(cert)) {
+							trusted = caldav.CertFingerprint(cert)
+							showCert()
+							runTest()
+						}
+						return
+					}
 					if err != nil {
 						testResult.SetText(err.Error())
 						testResult.SetTextColor(walk.RGB(0xc4, 0x2b, 0x1c))
@@ -189,7 +218,8 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 					fresh = true
 				})
 			}()
-		})
+		}
+		testBtn = pushButton(testRow, "Test connection", 140, runTest)
 		testResult = caption(testRow, "")
 		testRow.Layout().(*walk.BoxLayout).SetStretchFactor(testResult, 1)
 

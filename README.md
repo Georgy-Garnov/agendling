@@ -255,6 +255,13 @@ Agendling uses standard CalDAV (RFC 4791) with basic authentication. Most provid
   to sync at all.
 - **A URL pointing at one calendar collection** syncs only that calendar.
 - **Google Calendar is not supported:** Google's CalDAV endpoint only accepts OAuth 2.0.
+- **A self-signed certificate** (a NAS or a home server without a certificate from a known
+  authority): **Test connection** shows the server's certificate — who it is issued to, by whom,
+  until when, its SHA-256 fingerprint — and offers **Trust this certificate**. The account then
+  accepts exactly that certificate (and any the system trusts), never just any certificate; if
+  the server presents a different one, sync stops and asks you to check it again. **Forget** in
+  the account removes the trust. Compare the fingerprint with the one the server shows (on
+  Synology: *Control Panel → Security → Certificate*) before trusting it.
 
 **How sync works:** local changes are pushed first, then events from 6 months back to 2 years
 ahead are pulled. Local edits waiting to be pushed are never overwritten by a pull. Network or

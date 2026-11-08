@@ -30,8 +30,11 @@ type CalendarSource struct {
 	// HiddenCollections lists collection paths of the account the user chose not to show; they
 	// are not synchronized either. Calendars added on the server later are shown by default.
 	HiddenCollections []string
-	LastSync          time.Time
-	LastError         string
+	// TrustedCert is the SHA-256 fingerprint (hex) of a server certificate the user chose to
+	// trust although the system does not, e.g. a NAS with a self-signed one; "" = system trust.
+	TrustedCert string
+	LastSync    time.Time
+	LastError   string
 }
 
 func (s *CalendarSource) IsLocal() bool { return s.Type == SourceLocal }
