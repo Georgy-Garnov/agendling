@@ -15,6 +15,7 @@ import (
 	"github.com/lxn/walk"
 
 	"github.com/Georgy-Garnov/agendling/internal/appinfo"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/storage"
 	"github.com/Georgy-Garnov/agendling/internal/ui"
 )
@@ -54,6 +55,7 @@ func main() {
 	defer store.Close()
 
 	settings := store.Settings()
+	log.Printf("language: %s (setting %q)", i18n.Use(settings.Language), settings.Language)
 	ui.MigrateStartupEntry(settings.RunAtStartup)
 
 	app := ui.NewApp(store)

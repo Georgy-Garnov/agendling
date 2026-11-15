@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Georgy-Garnov/agendling/internal/caldav"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 )
 
@@ -60,7 +61,7 @@ func (c Calendar) Label() string {
 	case c.Account != "":
 		return c.Account + " / " + c.Name
 	case c.Source.IsLocal():
-		return c.Name + "  (local)"
+		return c.Name + "  " + i18n.T("(local)")
 	}
 	return c.Name
 }

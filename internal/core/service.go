@@ -8,6 +8,7 @@ import (
 
 	"github.com/Georgy-Garnov/agendling/internal/audio"
 	"github.com/Georgy-Garnov/agendling/internal/caldav"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/ics"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 	"github.com/Georgy-Garnov/agendling/internal/recur"
@@ -54,13 +55,14 @@ func (s *Service) SaveCalendarZoom(percent int) error {
 	return s.Store.SaveSettings(settings)
 }
 
-// EnsureDefaultCalendar creates a local "Personal" calendar on first run.
+// EnsureDefaultCalendar creates a local "Personal" calendar on first run, named in the language
+// in use; the user can rename it like any calendar.
 func (s *Service) EnsureDefaultCalendar() {
 	srcs, err := s.Store.Sources()
 	if err != nil || len(srcs) > 0 {
 		return
 	}
-	_ = s.Store.SaveSource(&model.CalendarSource{Name: "Personal", Type: model.SourceLocal, Color: "#4285f4", Enabled: true})
+	_ = s.Store.SaveSource(&model.CalendarSource{Name: i18n.T("Personal"), Type: model.SourceLocal, Color: "#4285f4", Enabled: true})
 }
 
 // PlayAlertSound plays the sound for an alert (see AlertSound; falling back to the built-in chime)
@@ -137,7 +139,7 @@ type EditorInput struct {
 // ApplyEdit validates the form, writes it into e and persists it.
 func (s *Service) ApplyEdit(e *model.Event, in EditorInput) error {
 	if in.Calendar == nil {
-		return errors.New("choose a calendar")
+		return errors.New(i18n.T("choose a calendar"))
 	}
 	var start, end time.Time
 	if in.AllDay {
@@ -153,7 +155,7 @@ func (s *Service) ApplyEdit(e *model.Event, in EditorInput) error {
 		}
 	}
 	if end.Before(start) {
-		return errors.New("the event ends before it starts")
+		return errors.New(i18n.T("the event ends before it starts"))
 	}
 	mins, err := ParseReminders(in.Reminders)
 	if err != nil {

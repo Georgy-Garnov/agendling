@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 )
 
@@ -19,7 +20,9 @@ const (
 	ViewMonth
 )
 
-var ViewNames = [...]string{ViewDay: "Day", ViewWeek: "Week", View2Week: "2 Weeks", ViewMonth: "Month"}
+// ViewNames are the English names of the views; show them with i18n.T.
+var ViewNames = [...]string{ViewDay: i18n.Mark("Day"), ViewWeek: i18n.Mark("Week"), View2Week: i18n.Mark("2 Weeks"),
+	ViewMonth: i18n.Mark("Month")}
 
 // ViewRange returns the visible [from, to) interval of a view around anchor.
 func ViewRange(mode ViewMode, anchor time.Time) (time.Time, time.Time) {
@@ -46,17 +49,17 @@ func ViewTitle(mode ViewMode, anchor time.Time) string {
 	last := to.AddDate(0, 0, -1)
 	switch mode {
 	case ViewDay:
-		return from.Format("Monday, 2 January 2006")
+		return i18n.Date(from, "Monday, 2 January 2006")
 	case ViewMonth:
-		return anchor.Format("January 2006")
+		return i18n.Date(anchor, "January 2006")
 	default:
 		if from.Year() != last.Year() {
-			return from.Format("2 Jan 2006") + " - " + last.Format("2 Jan 2006")
+			return i18n.Date(from, "2 Jan 2006") + " - " + i18n.Date(last, "2 Jan 2006")
 		}
 		if from.Month() != last.Month() {
-			return from.Format("2 Jan") + " - " + last.Format("2 Jan 2006")
+			return i18n.Date(from, "2 Jan") + " - " + i18n.Date(last, "2 Jan 2006")
 		}
-		return fmt.Sprintf("%d - %s", from.Day(), last.Format("2 January 2006"))
+		return fmt.Sprintf("%d - %s", from.Day(), i18n.Date(last, "2 January 2006"))
 	}
 }
 
@@ -225,7 +228,7 @@ func TimedItems(occs []model.Occurrence, d time.Time) []model.Occurrence {
 // EventTitle returns a displayable title.
 func EventTitle(e *model.Event) string {
 	if strings.TrimSpace(e.Title) == "" {
-		return "(No title)"
+		return i18n.T("(No title)")
 	}
 	return e.Title
 }
@@ -235,29 +238,30 @@ func CalendarEventTitle(e *model.Event) string {
 	return strings.Join(strings.Fields(EventTitle(e)), " ")
 }
 
+// RepeatPresets are the repeat choices of the editor; their labels are English (see RepeatChoices).
 var RepeatPresets = []struct{ Label, Rule string }{
-	{"Does not repeat", ""},
-	{"Daily", "FREQ=DAILY"},
-	{"Every weekday (Mon–Fri)", "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"},
-	{"Weekly", "FREQ=WEEKLY"},
-	{"Every 2 weeks", "FREQ=WEEKLY;INTERVAL=2"},
-	{"Monthly", "FREQ=MONTHLY"},
-	{"Yearly", "FREQ=YEARLY"},
+	{i18n.Mark("Does not repeat"), ""},
+	{i18n.Mark("Daily"), "FREQ=DAILY"},
+	{i18n.Mark("Every weekday (Mon–Fri)"), "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"},
+	{i18n.Mark("Weekly"), "FREQ=WEEKLY"},
+	{i18n.Mark("Every 2 weeks"), "FREQ=WEEKLY;INTERVAL=2"},
+	{i18n.Mark("Monthly"), "FREQ=MONTHLY"},
+	{i18n.Mark("Yearly"), "FREQ=YEARLY"},
 }
 
-// RepeatChoices lists repeat labels for an event, adding a "Custom" entry for rules
+// RepeatChoices lists translated repeat labels for an event, adding a "Custom" entry for rules
 // that match no preset. It returns the labels, the selected index and the custom rule.
 func RepeatChoices(rule string) (labels []string, idx int, custom string) {
 	idx = -1
 	for i, p := range RepeatPresets {
-		labels = append(labels, p.Label)
+		labels = append(labels, i18n.T(p.Label))
 		if strings.EqualFold(p.Rule, rule) {
 			idx = i
 		}
 	}
 	if idx < 0 {
 		custom = rule
-		labels = append(labels, "Custom: "+rule)
+		labels = append(labels, i18n.Tf("Custom: %s", rule))
 		idx = len(labels) - 1
 	}
 	return labels, idx, custom
@@ -291,7 +295,7 @@ func SnoozeLabels(def int) ([]string, int) {
 	var labels []string
 	cur := 0
 	for i, m := range choices {
-		labels = append(labels, fmt.Sprintf("%d min", m))
+		labels = append(labels, i18n.Tf("%d min", m))
 		if m == def {
 			cur = i
 		}
@@ -309,23 +313,28 @@ func ParseSnoozeLabel(s string, def int) int {
 	return def
 }
 
+// SyncIntervals are the sync interval choices; their labels are English, shown with i18n.T.
 var SyncIntervals = []struct {
 	Label string
 	Mins  int
-}{{"Manual only", 0}, {"Every 5 minutes", 5}, {"Every 15 minutes", 15}, {"Every 30 minutes", 30}, {"Every hour", 60}}
+}{
+	{i18n.Mark("Manual only"), 0}, {i18n.Mark("Every 5 minutes"), 5}, {i18n.Mark("Every 15 minutes"), 15},
+	{i18n.Mark("Every 30 minutes"), 30}, {i18n.Mark("Every hour"), 60},
+}
 
-// SourceStatus is the human-readable sync state of a calendar source.
+// SourceStatus is the human-readable sync state of a calendar source. The last sync error is
+// shown as it was recorded.
 func SourceStatus(s *model.CalendarSource) string {
 	switch {
 	case !s.Enabled:
-		return "Disabled"
+		return i18n.T("Disabled")
 	case s.IsLocal():
 		return "—"
 	case s.LastError != "":
-		return "Error: " + s.LastError
+		return i18n.Tf("Error: %s", s.LastError)
 	case s.LastSync.IsZero():
-		return "Not synced yet"
+		return i18n.T("Not synced yet")
 	default:
-		return "Synced " + s.LastSync.Format("02.01 15:04")
+		return i18n.Tf("Synced %s", i18n.Date(s.LastSync, "02.01 15:04"))
 	}
 }

@@ -3,13 +3,14 @@
 package core
 
 import (
-	"fmt"
+	"errors"
 	"html"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/scheduler"
 )
 
@@ -79,14 +80,14 @@ func HumanDuration(d time.Duration) string {
 	m := int(d.Minutes())
 	switch {
 	case m < 60:
-		return fmt.Sprintf("%d min", m)
+		return i18n.Tf("%d min", m)
 	case m < 24*60:
 		if m%60 == 0 {
-			return fmt.Sprintf("%d h", m/60)
+			return i18n.Tf("%d h", m/60)
 		}
-		return fmt.Sprintf("%d h %d min", m/60, m%60)
+		return i18n.Tf("%d h %d min", m/60, m%60)
 	default:
-		return fmt.Sprintf("%d d", m/(24*60))
+		return i18n.Tf("%d d", m/(24*60))
 	}
 }
 
@@ -94,22 +95,22 @@ func HumanDuration(d time.Duration) string {
 func WhenText(al scheduler.Alert) string {
 	var when string
 	if al.Event.AllDay {
-		when = al.Start.Format("Monday, 2 January 2006") + " (all day)"
+		when = i18n.Tf("%s (all day)", i18n.Date(al.Start, "Monday, 2 January 2006"))
 	} else {
-		when = al.Start.Format("Mon, 2 Jan 2006  15:04") + " – " + al.End.Format("15:04")
+		when = i18n.Date(al.Start, "Mon, 2 Jan 2006  15:04") + " – " + al.End.Format("15:04")
 		if !SameDay(al.Start, al.End) && al.End.After(al.Start) {
-			when = al.Start.Format("Mon 2 Jan 15:04") + " – " + al.End.Format("Mon 2 Jan 15:04")
+			when = i18n.Date(al.Start, "Mon 2 Jan 15:04") + " – " + i18n.Date(al.End, "Mon 2 Jan 15:04")
 		}
 	}
 	d := time.Until(al.Start).Round(time.Minute)
 	switch {
 	case al.Event.AllDay:
 	case d > 0:
-		when += "  ·  starts in " + HumanDuration(d)
+		when += "  ·  " + i18n.Tf("starts in %s", HumanDuration(d))
 	case d > -time.Minute:
-		when += "  ·  starting now"
+		when += "  ·  " + i18n.T("starting now")
 	default:
-		when += "  ·  started " + HumanDuration(-d) + " ago"
+		when += "  ·  " + i18n.Tf("started %s ago", HumanDuration(-d))
 	}
 	return when
 }
@@ -135,7 +136,7 @@ func ParseReminders(s string) ([]int, error) {
 		}
 		v, err := strconv.Atoi(part)
 		if err != nil || v < 0 {
-			return nil, fmt.Errorf("invalid reminder %q", part)
+			return nil, errors.New(i18n.Tf("invalid reminder %q", part))
 		}
 		res = append(res, v*mult)
 	}
@@ -167,7 +168,7 @@ func ParseClock(s string) (h, m int, err error) {
 			return t.Hour(), t.Minute(), nil
 		}
 	}
-	return 0, 0, fmt.Errorf("invalid time %q (use HH:MM)", s)
+	return 0, 0, errors.New(i18n.Tf("invalid time %q (use HH:MM)", s))
 }
 
 // Combine joins a calendar date with an "HH:MM" clock in the local zone.
