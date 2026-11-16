@@ -43,7 +43,13 @@ var (
 	sbTrack      = walk.RGB(0xf1, 0xf3, 0xf5)
 )
 
-func (sb *overlayScrollbar) dp(n int) int { return scale(sb.w, n) }
+// dp scales a size in 96-DPI pixels; drawn offscreen without a window (tests), it is 96 DPI.
+func (sb *overlayScrollbar) dp(n int) int {
+	if sb.w == nil {
+		return n
+	}
+	return scale(sb.w, n)
+}
 
 // set records the scroll state and the scrolled area, from top to bottom along the right edge.
 func (sb *overlayScrollbar) set(s core.Scroll, right, top, bottom int) {

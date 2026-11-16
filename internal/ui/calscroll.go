@@ -86,7 +86,12 @@ type calPan struct {
 const longPress = 300 * time.Millisecond
 
 // dp scales a size in 96-DPI pixels to the view's DPI; unlike px it ignores the zoom.
-func (v *CalView) dp(n int) int { return scale(v.cw, n) }
+func (v *CalView) dp(n int) int {
+	if v.cw == nil {
+		return n // painted offscreen without a window (tests)
+	}
+	return scale(v.cw, n)
+}
 
 // scroll is the scroll position of the current layout: hours in day and week, weeks in the
 // month and two-week grids.

@@ -32,8 +32,28 @@ jobs:
       - name: Test
         run: make test
 
+  # The Windows UI only builds on Windows, so its tests (and the Windows code paths of the rest,
+  # e.g. DPAPI) run here.
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Use the Go toolchain from go.mod
+        shell: bash
+        run: |
+          want=$(sed -n 's/^toolchain //p' go.mod)
+          echo "go.mod toolchain: ${want:-none}, using $(go env GOVERSION)"
+          [ -z "$want" ] || [ "$(go env GOVERSION)" = "$want" ]
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test ./internal/...
+
   build:
-    needs: test
+    needs: [test, test-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
