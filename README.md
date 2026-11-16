@@ -7,7 +7,7 @@
 <p align="center">
   <b>A tiny desktop calendar that stays out of your way until a meeting needs you.</b><br>
   CalDAV sync · local calendars · loud-when-it-matters reminders · new-meeting alerts<br>
-  Windows and Linux · single binary · ~26 MB of RAM · zero CPU when idle
+  Windows and Linux · English and French · single binary · ~26 MB of RAM · zero CPU when idle
 </p>
 
 <p align="center">
@@ -57,6 +57,10 @@ meeting or a freshly booked one.
   reminder times. Changes go back to the server on the next sync.
 - **Correct time zones:** recurring events keep their wall-clock time in the zone they were
   created in, even across daylight-saving changes.
+- **Speaks your language:** English and French, in every window, menu and message, with dates
+  written the local way ("lundi 16 novembre 2026"). Agendling follows the language of your system,
+  or pick one in **Settings → Startup → Language**. More languages are welcome: see
+  [Translations](CONTRIBUTING.md#translations).
 
 ## Screenshots
 
