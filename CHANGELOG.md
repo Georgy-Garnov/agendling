@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-16
+
+### Added
+- Groundwork for translations: a shared catalog for both front ends, with localized dates and
+  plural rules, and the language taken from the system (or a setting, to come). Nothing changes on
+  screen yet; French is the first language in the works (#10, thanks [@jaloji](https://github.com/jaloji)).
+
 ### Security
 - Built with Go 1.26.11, which fixes GO-2026-6859 in `net/http`, reachable from the app's CalDAV
   requests; the weekly `govulncheck` run caught it.
@@ -165,7 +172,8 @@ All notable changes to this project are documented here. The format follows
 - Encrypted password storage (Windows DPAPI; AES-GCM with the desktop keyring on Linux).
 - Run at startup / start minimized.
 
-[Unreleased]: https://github.com/Georgy-Garnov/agendling/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Georgy-Garnov/agendling/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/Georgy-Garnov/agendling/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Georgy-Garnov/agendling/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Georgy-Garnov/agendling/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/Georgy-Garnov/agendling/compare/v0.3.1...v0.3.2
