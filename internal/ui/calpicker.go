@@ -3,7 +3,6 @@
 package ui
 
 import (
-	"fmt"
 	"syscall"
 	"time"
 	"unsafe"
@@ -12,6 +11,7 @@ import (
 	"github.com/lxn/win"
 
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 )
 
 // calPicker is the dropdown under the toolbar's Calendars button: one row per calendar with
@@ -49,9 +49,9 @@ func calendarSummary(cals []core.Calendar) string {
 		}
 	}
 	if shown == len(cals) {
-		return "Calendars"
+		return i18n.T("Calendars")
 	}
-	return fmt.Sprintf("Calendars  %d/%d", shown, len(cals))
+	return i18n.Tf("Calendars  %d/%d", shown, len(cals))
 }
 
 func (a *App) toggleCalPicker() {
@@ -230,7 +230,7 @@ func (p *calPicker) anyHidden() bool {
 
 // showAllRect is the "Show all" link in the header.
 func (p *calPicker) showAllRect(b walk.Rectangle) walk.Rectangle {
-	w := scale(p.list, textWidth("Show all", uiFont(10, false))+8)
+	w := scale(p.list, textWidth(i18n.T("Show all"), uiFont(10, false))+8)
 	return walk.Rectangle{X: b.Width - w - scale(p.list, 16), Y: 0, Width: w + scale(p.list, 8), Height: scale(p.list, pickHeader)}
 }
 
@@ -305,13 +305,13 @@ func (p *calPicker) paint(cv *walk.Canvas, b walk.Rectangle) {
 	cv.FillRectanglePixels(bg, walk.Rectangle{X: 0, Y: listBottom, Width: b.Width, Height: b.Height - listBottom})
 	bg.Dispose()
 	header := walk.Rectangle{X: px(16), Y: 0, Width: b.Width - px(32), Height: px(pickHeader)}
-	drawText(cv, "Show calendars", uiFont(11, true), flText, header, textLeftMiddle)
+	drawText(cv, i18n.T("Show calendars"), uiFont(11, true), flText, header, textLeftMiddle)
 	if p.anyHidden() {
 		color := flAccent
 		if p.hover == -2 {
 			color = flAccentHover
 		}
-		drawText(cv, "Show all", uiFont(10, false), color, p.showAllRect(b), walk.TextRight|walk.TextVCenter|walk.TextSingleLine)
+		drawText(cv, i18n.T("Show all"), uiFont(10, false), color, p.showAllRect(b), walk.TextRight|walk.TextVCenter|walk.TextSingleLine)
 	}
 	line := solid(flLine)
 	cv.FillRectanglePixels(line, walk.Rectangle{X: px(12), Y: px(pickHeader) - px(1), Width: b.Width - px(24), Height: px(1)})
@@ -325,7 +325,7 @@ func calendarOwner(c core.Calendar) string {
 	case c.Account != "":
 		return c.Account
 	case c.Source.IsLocal():
-		return "Local calendar"
+		return i18n.T("Local calendar")
 	}
-	return "CalDAV account"
+	return i18n.T("CalDAV account")
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lxn/walk"
@@ -14,6 +15,7 @@ import (
 	"github.com/Georgy-Garnov/agendling/internal/appinfo"
 	"github.com/Georgy-Garnov/agendling/internal/caldav"
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 )
 
@@ -24,11 +26,28 @@ func formCard(parent walk.Container) *walk.Composite {
 	return c
 }
 
+// formLabels are the English labels passed to formRow; formLabelWidth fits the longest one.
+var formLabels = []string{
+	i18n.Mark("Name"), i18n.Mark("Colour"), i18n.Mark("Server URL"), i18n.Mark("Username"),
+	i18n.Mark("App password"), i18n.Mark("Certificate"), i18n.Mark("Sync"),
+	i18n.Mark("Issued to"), i18n.Mark("Issued by"), i18n.Mark("Valid until"), "SHA-256",
+}
+
+// formLabelWidth is the width of the label column of form cards: 120, or wider when a translated
+// label needs it. The language is chosen at startup, so it is measured once.
+var formLabelWidth = sync.OnceValue(func() int {
+	w := 120
+	for _, s := range formLabels {
+		w = max(w, textWidth(i18n.T(s), uiFont(10, false))+4)
+	}
+	return w
+})
+
 // formRow is a labelled row of a form card; the control goes into the returned container.
 func formRow(card walk.Container, text string) *walk.Composite {
 	row := box(card, false, walk.Margins{}, 12)
 	l := label(row, text, uiFont(10, false), flText2)
-	l.SetMinMaxSize(walk.Size{Width: 120}, walk.Size{Width: 120})
+	l.SetMinMaxSize(walk.Size{Width: formLabelWidth()}, walk.Size{Width: formLabelWidth()})
 	ctl := box(row, false, walk.Margins{}, 8)
 	row.Layout().(*walk.BoxLayout).SetStretchFactor(ctl, 1)
 	return ctl
@@ -43,9 +62,9 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 		return false
 	}
 	if isCalDAV {
-		dlg.SetTitle("CalDAV account")
+		dlg.SetTitle(i18n.T("CalDAV account"))
 	} else {
-		dlg.SetTitle("Local calendar")
+		dlg.SetTitle(i18n.T("Local calendar"))
 	}
 	dlg.SetFont(uiFont(10, false))
 	dlg.SetBackground(solid(flWindow))
@@ -58,9 +77,9 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 
 	// General: name, colour, enabled.
 	general := formCard(body)
-	name, _ := walk.NewLineEdit(formRow(general, "Name"))
+	name, _ := walk.NewLineEdit(formRow(general, i18n.T("Name")))
 	name.SetText(src.Name)
-	colorRow := formRow(general, "Colour")
+	colorRow := formRow(general, i18n.T("Colour"))
 	var colorEd *walk.LineEdit
 	var swatch *painted
 	swatch, _ = newPainted(colorRow, 0, walk.Size{Width: 28, Height: 28}, sizeFixed, func(cv *walk.Canvas, b walk.Rectangle) {
@@ -74,7 +93,7 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 	colorEd.SetText(src.Color)
 	colorEd.SetMinMaxSize(walk.Size{Width: 100}, walk.Size{Width: 100})
 	colorEd.TextChanged().Attach(func() { swatch.Invalidate() })
-	pushButton(colorRow, "Pick…", 80, func() {
+	pushButton(colorRow, i18n.T("Pick…"), 80, func() {
 		if c, ok := PickColor(dlg, ParseColor(colorEd.Text())); ok {
 			colorEd.SetText(FormatColor(c))
 		}
@@ -83,8 +102,8 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 	enabledRow := box(general, false, walk.Margins{}, 12)
 	enabledText := box(enabledRow, true, walk.Margins{}, 2)
 	walk.NewHSpacer(enabledText)
-	label(enabledText, "Enabled", uiFont(10, false), flText)
-	caption(enabledText, "Show this calendar and keep it synchronized.")
+	label(enabledText, i18n.T("Enabled"), uiFont(10, false), flText)
+	caption(enabledText, i18n.T("Show this calendar and keep it synchronized."))
 	enabled, _ := newToggle(enabledRow, src.Enabled, flSurface, nil)
 
 	// Server and calendar selection, for CalDAV accounts.
@@ -112,7 +131,7 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 		}
 		choices, toggles = list, nil
 		if len(list) == 0 {
-			caption(calList, "Test the connection to list the calendars of this account.")
+			caption(calList, i18n.T("Test the connection to list the calendars of this account."))
 		}
 		for _, c := range list {
 			row := box(calList, false, walk.Margins{}, 12)
@@ -153,31 +172,31 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 
 	if isCalDAV {
 		server := formCard(body)
-		urlEdit, _ = walk.NewLineEdit(formRow(server, "Server URL"))
+		urlEdit, _ = walk.NewLineEdit(formRow(server, i18n.T("Server URL")))
 		urlEdit.SetText(src.URL)
 		urlEdit.SetCueBanner("https://caldav.example.com")
 		urlEdit.TextChanged().Attach(func() { fresh = false })
 		hint := formRow(server, "")
-		caption(hint, "For example https://caldav.icloud.com or https://host/remote.php/dav (Nextcloud). "+
-			"A URL pointing at a single calendar syncs only that calendar.")
-		user, _ = walk.NewLineEdit(formRow(server, "Username"))
+		caption(hint, i18n.T("For example https://caldav.icloud.com or https://host/remote.php/dav (Nextcloud). "+
+			"A URL pointing at a single calendar syncs only that calendar."))
+		user, _ = walk.NewLineEdit(formRow(server, i18n.T("Username")))
 		user.SetText(src.Username)
 		user.TextChanged().Attach(func() { fresh = false })
-		pass, _ = walk.NewLineEdit(formRow(server, "App password"))
+		pass, _ = walk.NewLineEdit(formRow(server, i18n.T("App password")))
 		pass.SetText(src.Password)
 		pass.SetPasswordMode(true)
 		// A certificate trusted for this account (e.g. a NAS with a self-signed one).
-		certRow := formRow(server, "Certificate")
+		certRow := formRow(server, i18n.T("Certificate"))
 		certText := label(certRow, "", uiFont(10, false), flText)
 		walk.NewHSpacer(certRow)
 		var showCert func()
-		pushButton(certRow, "Forget", 80, func() {
+		pushButton(certRow, i18n.T("Forget"), 80, func() {
 			trusted = ""
 			showCert()
 		})
 		showCert = func() {
 			certRow.Parent().(walk.Widget).SetVisible(trusted != "")
-			certText.SetText("Trusted, SHA-256 " + caldav.ShortFingerprint(trusted))
+			certText.SetText(i18n.Tf("Trusted, SHA-256 %s", caldav.ShortFingerprint(trusted)))
 			certText.SetToolTipText(caldav.FormatFingerprint(trusted))
 		}
 		showCert()
@@ -189,7 +208,7 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 		runTest = func() {
 			s := collect()
 			testBtn.SetEnabled(false)
-			testResult.SetText("Connecting…")
+			testResult.SetText(i18n.T("Connecting…"))
 			testResult.SetTextColor(flText2)
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -198,7 +217,7 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 				dlg.Synchronize(func() {
 					testBtn.SetEnabled(true)
 					if cert := caldav.UntrustedCertificate(err); cert != nil {
-						testResult.SetText("The server's certificate is not trusted.")
+						testResult.SetText(i18n.T("The server's certificate is not trusted."))
 						testResult.SetTextColor(walk.RGB(0xc4, 0x2b, 0x1c))
 						if a.confirmCertificate(dlg, caldav.DescribeCertificate(cert)) {
 							trusted = caldav.CertFingerprint(cert)
@@ -212,29 +231,29 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 						testResult.SetTextColor(walk.RGB(0xc4, 0x2b, 0x1c))
 						return
 					}
-					testResult.SetText(fmt.Sprintf("Connected, %d calendar(s) found", len(cals)))
+					testResult.SetText(fmt.Sprintf(i18n.TN(len(cals), "Connected, %d calendar found", "Connected, %d calendars found"), len(cals)))
 					testResult.SetTextColor(walk.RGB(0x0f, 0x7b, 0x3f))
 					fillCalendars(core.CalendarChoices(cals, s.HiddenCollections)) // keeps choices made so far
 					fresh = true
 				})
 			}()
 		}
-		testBtn = pushButton(testRow, "Test connection", 140, runTest)
+		testBtn = pushButton(testRow, i18n.T("Test connection"), 140, runTest)
 		testResult = caption(testRow, "")
 		testRow.Layout().(*walk.BoxLayout).SetStretchFactor(testResult, 1)
 
 		cals := formCard(body)
-		label(cals, "Calendars to sync", uiFont(10, true), flText)
-		caption(cals, "Turned-off calendars are not downloaded at all. Which synced calendars are shown is chosen with the "+
-			"Calendars button in the main window.")
+		label(cals, i18n.T("Calendars to sync"), uiFont(10, true), flText)
+		caption(cals, i18n.T("Turned-off calendars are not downloaded at all. Which synced calendars are shown is chosen with the "+
+			"Calendars button in the main window."))
 		calList = box(cals, true, walk.Margins{VNear: 4}, 8)
 
 		syncCard := formCard(body)
-		interval, _ = walk.NewComboBox(formRow(syncCard, "Sync"))
+		interval, _ = walk.NewComboBox(formRow(syncCard, i18n.T("Sync")))
 		labels := make([]string, len(core.SyncIntervals))
 		idx := 2
 		for i, it := range core.SyncIntervals {
-			labels[i] = it.Label
+			labels[i] = i18n.T(it.Label)
 			if it.Mins == src.SyncInterval {
 				idx = i
 			}
@@ -258,28 +277,28 @@ func (a *App) editSource(owner walk.Form, src *model.CalendarSource) bool {
 	bottom := box(dlg, false, walk.Margins{HNear: 20, VNear: 14, HFar: 20, VFar: 14}, 8)
 	bottom.SetBackground(solid(flSurface))
 	walk.NewHSpacer(bottom)
-	ok := pushButton(bottom, "OK", 96, func() {
+	ok := pushButton(bottom, i18n.T("OK"), 96, func() {
 		s := collect()
 		if s.Name == "" {
-			walk.MsgBox(dlg, appinfo.Name, "Please enter a name.", walk.MsgBoxIconWarning)
+			walk.MsgBox(dlg, appinfo.Name, i18n.T("Please enter a name."), walk.MsgBoxIconWarning)
 			return
 		}
 		if isCalDAV && (s.URL == "" || s.Username == "") {
-			walk.MsgBox(dlg, appinfo.Name, "Server URL and username are required.", walk.MsgBoxIconWarning)
+			walk.MsgBox(dlg, appinfo.Name, i18n.T("Server URL and username are required."), walk.MsgBoxIconWarning)
 			return
 		}
 		if _, anyShown := core.HiddenCalendars(shownChoices()); isCalDAV && fresh && len(choices) > 0 && !anyShown {
-			walk.MsgBox(dlg, appinfo.Name, "Turn on at least one calendar, or turn off Enabled to hide the whole account.", walk.MsgBoxIconWarning)
+			walk.MsgBox(dlg, appinfo.Name, i18n.T("Turn on at least one calendar, or turn off Enabled to hide the whole account."), walk.MsgBoxIconWarning)
 			return
 		}
 		if err := a.store.SaveSource(s); err != nil {
-			walk.MsgBox(dlg, "Error", err.Error(), walk.MsgBoxIconError)
+			walk.MsgBox(dlg, i18n.T("Error"), err.Error(), walk.MsgBoxIconError)
 			return
 		}
 		*src = *s
 		acceptLater(dlg)
 	})
-	cancel := pushButton(bottom, "Cancel", 96, func() { dlg.Cancel() })
+	cancel := pushButton(bottom, i18n.T("Cancel"), 96, func() { dlg.Cancel() })
 	dlg.SetDefaultButton(ok)
 	dlg.SetCancelButton(cancel)
 

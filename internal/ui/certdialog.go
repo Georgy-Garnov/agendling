@@ -8,6 +8,7 @@ import (
 	"github.com/lxn/walk"
 
 	"github.com/Georgy-Garnov/agendling/internal/caldav"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 )
 
 // confirmCertificate shows a server certificate the system does not trust and asks whether to
@@ -18,7 +19,7 @@ func (a *App) confirmCertificate(owner walk.Form, info caldav.CertInfo) bool {
 		log.Printf("certificate dialog: %v", err)
 		return false
 	}
-	dlg.SetTitle("Server certificate")
+	dlg.SetTitle(i18n.T("Server certificate"))
 	dlg.SetFont(uiFont(10, false))
 	dlg.SetBackground(solid(flWindow))
 	root := walk.NewVBoxLayout()
@@ -28,20 +29,20 @@ func (a *App) confirmCertificate(owner walk.Form, info caldav.CertInfo) bool {
 	dlg.SetMinMaxSize(walk.Size{Width: 560}, walk.Size{})
 	body := box(dlg, true, walk.Margins{HNear: 20, VNear: 18, HFar: 20, VFar: 16}, 10)
 
-	label(body, "The server's certificate is not trusted", uiFont(13, true), flText)
-	caption(body, "Your computer does not know who issued it. That is normal for a NAS or a home server with a "+
+	label(body, i18n.T("The server's certificate is not trusted"), uiFont(13, true), flText)
+	caption(body, i18n.T("Your computer does not know who issued it. That is normal for a NAS or a home server with a "+
 		"self-signed certificate, but it is also what an impostor's server would look like. Trust it only if this is "+
-		"your own server and the details below match it.")
+		"your own server and the details below match it."))
 
 	card := formCard(body)
 	issuer := info.Issuer
 	if info.SelfSigned {
-		issuer += " (self-signed)"
+		issuer = i18n.Tf("%s (self-signed)", issuer)
 	}
 	for _, row := range [][2]string{
-		{"Issued to", info.Subject},
-		{"Issued by", issuer},
-		{"Valid until", info.NotAfter.Local().Format("2 January 2006")},
+		{i18n.T("Issued to"), info.Subject},
+		{i18n.T("Issued by"), issuer},
+		{i18n.T("Valid until"), i18n.Date(info.NotAfter.Local(), "2 January 2006")},
 	} {
 		label(formRow(card, row[0]), row[1], uiFont(10, false), flText)
 	}
@@ -57,8 +58,8 @@ func (a *App) confirmCertificate(owner walk.Form, info caldav.CertInfo) bool {
 	bottom := box(dlg, false, walk.Margins{HNear: 20, VNear: 14, HFar: 20, VFar: 14}, 8)
 	bottom.SetBackground(solid(flSurface))
 	walk.NewHSpacer(bottom)
-	pushButton(bottom, "Trust this certificate", 180, func() { acceptLater(dlg) })
-	cancel := pushButton(bottom, "Cancel", 96, func() { dlg.Cancel() })
+	pushButton(bottom, i18n.T("Trust this certificate"), 180, func() { acceptLater(dlg) })
+	cancel := pushButton(bottom, i18n.T("Cancel"), 96, func() { dlg.Cancel() })
 	dlg.SetCancelButton(cancel)
 	dlg.SetDefaultButton(cancel) // trusting must be a deliberate click
 	a.applyIcon(dlg)

@@ -108,9 +108,24 @@ func TestSettingsSearchMatchesBothLanguages(t *testing.T) {
 		"rappels par défaut": "reminders", // translated keywords
 		"snooze":             "reminders", // English keywords still match
 		"CHIME":              "sound",
+		"language":           "startup",
 	} {
 		if got := keys(q); got != want {
 			t.Errorf("FilterSettingsPages(%q) = %q, want %q", q, got, want)
 		}
+	}
+}
+
+func TestLanguageChoices(t *testing.T) {
+	labels, tags, idx := LanguageChoices("qps")
+	if len(labels) != len(tags) || len(tags) < 3 || labels[0] != "System default" || tags[0] != "" ||
+		labels[1] != "English" || tags[1] != "en" || tags[idx] != "qps" || labels[idx] != "Pseudo" {
+		t.Fatalf("LanguageChoices(qps) = %q %q %d", labels, tags, idx)
+	}
+	if _, _, idx := LanguageChoices(""); idx != 0 {
+		t.Errorf("system default selects %d", idx)
+	}
+	if labels, tags, idx := LanguageChoices("xx"); tags[idx] != "xx" || labels[idx] != "xx" {
+		t.Errorf("an unavailable language is not kept: %q %q %d", labels, tags, idx)
 	}
 }

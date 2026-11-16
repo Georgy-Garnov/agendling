@@ -29,14 +29,16 @@ func main() {
 		return
 	}
 
+	// Messages shown before the settings are read follow the system language.
+	i18n.Use("")
 	dir, err := appinfo.DataDir()
 	if err != nil {
-		fatal("Cannot determine data directory: " + err.Error())
+		fatal(i18n.Tf("Cannot determine data directory: %v", err))
 	}
 	if !ui.AcquireSingleInstance(dir) {
 		// Bring the running instance's window up instead of starting a second copy.
 		if !ui.ActivateRunningInstance() {
-			walk.MsgBox(nil, appinfo.Name, appinfo.Name+" is already running — look for its icon in the system tray.", walk.MsgBoxIconInformation)
+			walk.MsgBox(nil, appinfo.Name, i18n.Tf("%s is already running — look for its icon in the system tray.", appinfo.Name), walk.MsgBoxIconInformation)
 		}
 		return
 	}
@@ -50,7 +52,7 @@ func main() {
 
 	store, err := storage.Open(filepath.Join(dir, "calendar.db"))
 	if err != nil {
-		fatal("Cannot open database: " + err.Error())
+		fatal(i18n.Tf("Cannot open database: %v", err))
 	}
 	defer store.Close()
 

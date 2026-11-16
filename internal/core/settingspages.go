@@ -33,7 +33,7 @@ var SettingsPages = []SettingsPage{
 		Keywords: i18n.Mark("new event meeting invitation alert notify popup sound sync")},
 	{Key: "startup", Title: i18n.Mark("Startup"), Icon: "system-run-symbolic",
 		Intro:    i18n.Mark("How Agendling starts together with your computer."),
-		Keywords: i18n.Mark("run at login windows startup autostart start minimized tray background close quit exit")},
+		Keywords: i18n.Mark("run at login windows startup autostart start minimized tray background close quit exit language")},
 	{Key: "about", Title: i18n.Mark("About"), Icon: "help-about-symbolic",
 		Intro:    i18n.Mark("Version, updates and where your data is stored."),
 		Keywords: i18n.Mark("version update check for updates new release github download license data folder log file privacy")},
@@ -60,6 +60,25 @@ func FilterSettingsPages(query string) []SettingsPage {
 		}
 	}
 	return res
+}
+
+// LanguageChoices lists the language picker's entries: "System default" (tag "") first, then each
+// available language under its own name. It returns the labels, their tags and the index of the
+// current setting. A setting naming no available language (from another build, say) is listed
+// as it is, so opening the dialog does not change it.
+func LanguageChoices(current string) (labels, tags []string, idx int) {
+	labels, tags = []string{i18n.T("System default")}, []string{""}
+	for _, l := range i18n.Languages() {
+		labels, tags = append(labels, l.Name), append(tags, l.Tag)
+		if l.Tag == current {
+			idx = len(tags) - 1
+		}
+	}
+	if current != "" && idx == 0 {
+		labels, tags = append(labels, current), append(tags, current)
+		idx = len(tags) - 1
+	}
+	return labels, tags, idx
 }
 
 // SameEditableSettings compares the settings edited in the Settings dialog, ignoring those

@@ -12,6 +12,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 	"github.com/Georgy-Garnov/agendling/internal/recur"
 )
@@ -148,7 +149,7 @@ func (v *CalView) Reload() {
 	from, to := v.Range()
 	events, err := v.app.svc.ViewEvents(from, to)
 	if err != nil {
-		v.app.setStatus("Failed to load events: " + err.Error())
+		v.app.setStatus(i18n.Tf("Failed to load events: %v", err))
 	}
 	v.occs = recur.Expand(events, from, to)
 	v.cals = map[int64]*model.CalendarSource{}
@@ -317,16 +318,16 @@ func (v *CalView) paintTimeGrid(c *walk.Canvas, b walk.Rectangle, px func(int) i
 		if core.SameDay(d, now) {
 			col, f = colAccent, v.bold
 		}
-		label := d.Format("Mon 2")
+		label := i18n.Date(d, "Mon 2")
 		if days == 1 {
-			label = d.Format("Monday, 2 January")
+			label = i18n.Date(d, "Monday, 2 January")
 		}
 		v.text(c, label, f, col, r, walk.TextCenter|walk.TextVCenter|walk.TextSingleLine)
 		v.hits = append(v.hits, hit{kind: hitDay, r: r, day: d})
 		v.vline(c, colGrid, colX(i), 0, top)
 	}
 	v.vline(c, colGrid, colX(days), 0, top)
-	v.text(c, "all-day", v.small, colMuted, walk.Rectangle{X: px(4), Y: headerH + px(2), Width: gutter - px(6), Height: px(16)}, walk.TextSingleLine)
+	v.text(c, i18n.T("all-day"), v.small, colMuted, walk.Rectangle{X: px(4), Y: headerH + px(2), Width: gutter - px(6), Height: px(16)}, walk.TextSingleLine)
 	for _, s := range spans {
 		r := walk.Rectangle{X: colX(s.Col0) + px(2), Y: headerH + px(2) + s.Row*rowH, Width: colX(s.Col1+1) - colX(s.Col0) - px(4), Height: rowH - px(2)}
 		v.paintAllDayBar(c, px, r, s.O)
@@ -410,7 +411,7 @@ func (v *CalView) paintCells(c *walk.Canvas, b walk.Rectangle, px func(int) int,
 			}
 			label := fmt.Sprint(d.Day())
 			if d.Day() == 1 || (w == 0 && i == 0) {
-				label = d.Format("2 Jan")
+				label = i18n.Date(d, "2 Jan")
 			}
 			numR := walk.Rectangle{X: x0 + px(4), Y: y0 + px(2), Width: cell.Width - px(8), Height: px(18)}
 			v.text(c, label, numFont, numCol, numR, walk.TextSingleLine)
@@ -444,7 +445,7 @@ func (v *CalView) paintCells(c *walk.Canvas, b walk.Rectangle, px func(int) int,
 			}
 			if rest := len(items) - show; rest > 0 && y+lineH-px(2) <= y1 {
 				r := walk.Rectangle{X: x0 + px(6), Y: y, Width: cell.Width - px(8), Height: lineH - px(2)}
-				v.text(c, fmt.Sprintf("+%d more", rest), v.small, colAccent, r, walk.TextSingleLine|walk.TextVCenter)
+				v.text(c, fmt.Sprintf(i18n.TN(rest, "+%d more", "+%d more"), rest), v.small, colAccent, r, walk.TextSingleLine|walk.TextVCenter)
 				v.hits = append(v.hits, hit{kind: hitMore, r: r, day: d, cell: cell})
 			}
 		}
@@ -454,7 +455,7 @@ func (v *CalView) paintCells(c *walk.Canvas, b walk.Rectangle, px func(int) int,
 	for i := 0; i < 7; i++ {
 		d := from.AddDate(0, 0, i)
 		r := walk.Rectangle{X: int(float64(i) * cellW), Y: 0, Width: int(cellW), Height: headerH}
-		v.text(c, d.Format("Monday"), v.font, colMuted, r, walk.TextCenter|walk.TextVCenter|walk.TextSingleLine)
+		v.text(c, i18n.Date(d, "Monday"), v.font, colMuted, r, walk.TextCenter|walk.TextVCenter|walk.TextSingleLine)
 	}
 	v.hline(c, colGrid, 0, b.Width, headerH)
 	if !v.sb.s.Scrollable() || v.cellScroll >= int(v.sb.s.Max()) {

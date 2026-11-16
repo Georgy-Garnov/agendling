@@ -18,6 +18,7 @@ import (
 	"github.com/Georgy-Garnov/agendling/internal/audio"
 	"github.com/Georgy-Garnov/agendling/internal/caldav"
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/scheduler"
 	"github.com/Georgy-Garnov/agendling/internal/storage"
 )
@@ -159,15 +160,15 @@ func (a *App) createTray() error {
 		ni.ContextMenu().Actions().Add(act)
 		return act
 	}
-	open := add("Open "+appinfo.Name, a.showMain)
+	open := add(i18n.Tf("Open %s", appinfo.Name), a.showMain)
 	open.SetDefault(true)
-	add("Sync Now", a.syncNow)
-	a.muteAction = add("Mute Notifications", a.toggleMute)
+	add(i18n.T("Sync Now"), a.syncNow)
+	a.muteAction = add(i18n.T("Mute Notifications"), a.toggleMute)
 	a.muteAction.SetCheckable(true)
 	a.muteAction.SetChecked(a.store.Settings().Muted)
-	add("Settings", func() { a.showMain(); a.showSettings() })
+	add(i18n.T("Settings"), func() { a.showMain(); a.showSettings() })
 	ni.ContextMenu().Actions().Add(walk.NewSeparatorAction())
-	add("Exit", a.exit)
+	add(i18n.T("Exit"), a.exit)
 
 	ni.MouseDown().Attach(func(x, y int, button walk.MouseButton) {
 		if button == walk.LeftButton {
@@ -194,25 +195,29 @@ func (a *App) applyIcon(f walk.Form) {
 // calendars, new event, sync and settings on the right.
 func (a *App) buildToolbar() {
 	tb := a.toolbar
-	newFlatButton(tb, "", "Today", btnOutline, flSurface, func() { a.view.GoTo(time.Now(), a.view.mode) })
+	newFlatButton(tb, "", i18n.T("Today"), btnOutline, flSurface, func() { a.view.GoTo(time.Now(), a.view.mode) })
 	prev, _ := newFlatButton(tb, glyphPrev, "", btnGhost, flSurface, func() { a.view.Navigate(-1) })
-	prev.SetToolTipText("Previous")
+	prev.SetToolTipText(i18n.T("Previous"))
 	next, _ := newFlatButton(tb, glyphNext, "", btnGhost, flSurface, func() { a.view.Navigate(1) })
-	next.SetToolTipText("Next")
+	next.SetToolTipText(i18n.T("Next"))
 	a.titleLabel = label(tb, "", uiFont(15, true), flText)
 	a.titleLabel.SetMinMaxSize(walk.Size{Width: 300}, walk.Size{})
 	walk.NewHSpacer(tb)
-	a.seg, _ = newSegmented(tb, viewNames[:], flSurface, func(i int) { a.view.SetMode(viewMode(i)) })
+	names := make([]string, len(viewNames))
+	for i, n := range viewNames {
+		names[i] = i18n.T(n)
+	}
+	a.seg, _ = newSegmented(tb, names, flSurface, func(i int) { a.view.SetMode(viewMode(i)) })
 	walk.NewHSpacerFixed(tb, 6)
-	a.calBtn, _ = newFlatButton(tb, "", "Calendars", btnOutline, flSurface, a.toggleCalPicker)
+	a.calBtn, _ = newFlatButton(tb, "", i18n.T("Calendars"), btnOutline, flSurface, a.toggleCalPicker)
 	a.calBtn.SetTrailing(glyphChevron)
-	a.calBtn.SetToolTipText("Choose which calendars to show")
-	newFlatButton(tb, glyphAdd, "New event", btnPrimary, flSurface, func() { a.newEvent(time.Now().Truncate(time.Hour).Add(time.Hour), false) })
+	a.calBtn.SetToolTipText(i18n.T("Choose which calendars to show"))
+	newFlatButton(tb, glyphAdd, i18n.T("New event"), btnPrimary, flSurface, func() { a.newEvent(time.Now().Truncate(time.Hour).Add(time.Hour), false) })
 	walk.NewHSpacerFixed(tb, 4)
 	sync, _ := newFlatButton(tb, glyphRefresh, "", btnGhost, flSurface, a.syncNow)
-	sync.SetToolTipText("Sync now")
+	sync.SetToolTipText(i18n.T("Sync now"))
 	settings, _ := newFlatButton(tb, glyphSettings, "", btnGhost, flSurface, a.showSettings)
-	settings.SetToolTipText("Settings")
+	settings.SetToolTipText(i18n.T("Settings"))
 	a.updateCalButton()
 	a.onViewChanged()
 }
@@ -220,10 +225,10 @@ func (a *App) buildToolbar() {
 // buildStatusBar fills the bottom bar: the sync status, and the zoom of the calendar.
 func (a *App) buildStatusBar() {
 	sb := a.statusBar
-	a.status = label(sb, "Ready", uiFont(9, false), flText2)
+	a.status = label(sb, i18n.T("Ready"), uiFont(9, false), flText2)
 	walk.NewHSpacer(sb)
 	a.zoomCtl, _ = newZoomControl(sb, a.view.zoom, flSurface, func(percent int) { a.setZoom(percent, -1) })
-	a.zoomCtl.SetToolTipText("Calendar zoom: Ctrl+mouse wheel, Ctrl+Plus, Ctrl+Minus; Ctrl+0 or a click on the percentage resets it")
+	a.zoomCtl.SetToolTipText(i18n.T("Calendar zoom: Ctrl+mouse wheel, Ctrl+Plus, Ctrl+Minus; Ctrl+0 or a click on the percentage resets it"))
 }
 
 // setZoom zooms the calendar, keeping what is at y (-1: the middle) in place, and saves the level.
@@ -233,7 +238,7 @@ func (a *App) setZoom(percent, y int) {
 		return
 	}
 	if err := a.svc.SaveCalendarZoom(percent); err != nil {
-		a.setStatus("Failed to save calendar zoom: " + err.Error())
+		a.setStatus(i18n.Tf("Failed to save calendar zoom: %v", err))
 	}
 	a.view.zoomAt(percent, y)
 	if a.zoomCtl != nil {
@@ -282,7 +287,7 @@ func (a *App) exit() {
 }
 
 func (a *App) syncNow() {
-	a.setStatus("Syncing…")
+	a.setStatus(i18n.T("Syncing…"))
 	a.engine.SyncNow()
 }
 
@@ -290,9 +295,9 @@ func (a *App) toggleMute() {
 	muted := a.svc.ToggleMute()
 	a.muteAction.SetChecked(muted)
 	if muted {
-		a.setStatus("Notification sounds muted")
+		a.setStatus(i18n.T("Notification sounds muted"))
 	} else {
-		a.setStatus("Notification sounds on")
+		a.setStatus(i18n.T("Notification sounds on"))
 	}
 }
 
@@ -372,21 +377,21 @@ func (a *App) onSyncStatus(st caldav.Status) {
 		}
 		switch {
 		case st.Running:
-			a.setStatus("Syncing " + name + "…")
+			a.setStatus(i18n.Tf("Syncing %s…", name))
 		case st.Err != nil:
-			a.setStatus(name + ": sync failed — " + st.Err.Error())
+			a.setStatus(i18n.Tf("%s: sync failed — %v", name, st.Err))
 			a.syncMu.Lock()
 			prev := a.syncErrors[st.SourceID]
 			a.syncErrors[st.SourceID] = st.Err.Error()
 			a.syncMu.Unlock()
 			if prev != st.Err.Error() && a.ni != nil {
-				a.ni.ShowWarning("Calendar sync failed", name+": "+st.Err.Error())
+				a.ni.ShowWarning(i18n.T("Calendar sync failed"), name+": "+st.Err.Error())
 			}
 		default:
 			a.syncMu.Lock()
 			delete(a.syncErrors, st.SourceID)
 			a.syncMu.Unlock()
-			a.setStatus(fmt.Sprintf("%s synced at %s", name, time.Now().Format("15:04")))
+			a.setStatus(i18n.Tf("%s synced at %s", name, time.Now().Format("15:04")))
 		}
 		if !st.Running {
 			a.showNewEvents(st.SourceID, st.NewEvents)

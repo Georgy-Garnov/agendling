@@ -20,6 +20,7 @@ import (
 	"github.com/Georgy-Garnov/agendling/internal/appinfo"
 	"github.com/Georgy-Garnov/agendling/internal/caldav"
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 	"github.com/Georgy-Garnov/agendling/internal/update"
 )
@@ -65,6 +66,8 @@ type settingsUI struct {
 	snooze                       *walk.NumberEdit
 	loop, newAlerts, startup     *toggleSwitch
 	minimized                    *toggleSwitch
+	language                     *walk.ComboBox
+	languageTags                 []string
 	limitMin, limitSec           *walk.NumberEdit
 	noLimit                      *toggleSwitch
 	typeReminder, typeNewEvent   *soundOption
@@ -145,10 +148,13 @@ func caption(parent walk.Container, text string) *walk.TextLabel {
 	return l
 }
 
+// pushButton adds a button of the given width, widened when its text needs it (translations are
+// often longer than the English text); a width of 0 lets the layout decide.
 func pushButton(parent walk.Container, text string, minWidth int, onClick func()) *walk.PushButton {
 	b, _ := walk.NewPushButton(parent)
 	b.SetText(text)
 	if minWidth > 0 {
+		minWidth = max(minWidth, textWidth(text, uiFont(10, false))+24)
 		b.SetMinMaxSize(walk.Size{Width: minWidth, Height: 32}, walk.Size{Width: minWidth, Height: 32})
 	} else {
 		b.SetMinMaxSize(walk.Size{Height: 32}, walk.Size{Height: 32})
@@ -191,7 +197,7 @@ func (s *settingsUI) build() error {
 		return err
 	}
 	s.dlg = dlg
-	dlg.SetTitle("Settings")
+	dlg.SetTitle(i18n.T("Settings"))
 	dlg.SetFont(uiFont(10, false))
 	dlg.SetBackground(solid(flWindow))
 	root := walk.NewVBoxLayout()
@@ -254,14 +260,14 @@ func (s *settingsUI) build() error {
 	bottom.SetMinMaxSize(walk.Size{Height: setBottomHeight}, walk.Size{Height: setBottomHeight})
 	s.status = label(bottom, "", uiFont(9, false), flText2)
 	walk.NewHSpacer(bottom)
-	ok := pushButton(bottom, "OK", 96, func() {
+	ok := pushButton(bottom, i18n.T("OK"), 96, func() {
 		if s.apply() {
 			acceptLater(dlg)
 		}
 	})
 	s.okBtn = ok
-	cancel := pushButton(bottom, "Cancel", 96, func() { dlg.Cancel() })
-	s.applyBtn = pushButton(bottom, "Apply", 96, func() { s.apply() })
+	cancel := pushButton(bottom, i18n.T("Cancel"), 96, func() { dlg.Cancel() })
+	s.applyBtn = pushButton(bottom, i18n.T("Apply"), 96, func() { s.apply() })
 	dlg.SetDefaultButton(ok)
 	dlg.SetCancelButton(cancel)
 
@@ -308,7 +314,7 @@ func (s *settingsUI) buildSearch(parent walk.Container) {
 	wrap.SizeChanged().Attach(paint)
 	label(wrap, glyphSearch, iconFont(10), flText2)
 	s.search, _ = walk.NewLineEdit(wrap)
-	s.search.SetCueBanner("Search settings")
+	s.search.SetCueBanner(i18n.T("Search settings"))
 	// Borderless, so it sits inside the rounded field.
 	ex := win.GetWindowLong(s.search.Handle(), win.GWL_EXSTYLE)
 	win.SetWindowLong(s.search.Handle(), win.GWL_EXSTYLE, ex&^win.WS_EX_CLIENTEDGE)
@@ -332,7 +338,7 @@ func (s *settingsUI) filter() {
 	items := make([]navItem, len(matches))
 	keep := false
 	for i, p := range matches {
-		items[i] = navItem{Key: p.Key, Title: p.Title, Glyph: navGlyphs[p.Key]}
+		items[i] = navItem{Key: p.Key, Title: i18n.T(p.Title), Glyph: navGlyphs[p.Key]}
 		keep = keep || p.Key == s.nav.selected
 	}
 	s.nav.setItems(items)
@@ -349,8 +355,8 @@ func (s *settingsUI) showPage(key string) {
 	}
 	for _, p := range core.SettingsPages {
 		if p.Key == key {
-			s.title.SetText(p.Title)
-			s.intro.SetText(p.Intro)
+			s.title.SetText(i18n.T(p.Title))
+			s.intro.SetText(i18n.T(p.Intro))
 		}
 	}
 	s.scroll.SetFocus()
@@ -365,22 +371,22 @@ func (s *settingsUI) buildCalendars() {
 	a := s.a
 	p := s.addPage("calendars")
 	actions := box(p, false, walk.Margins{VFar: 4}, 8)
-	newFlatButton(actions, glyphAdd, "Add CalDAV account", btnGhost, flWindow, func() {
+	newFlatButton(actions, glyphAdd, i18n.T("Add CalDAV account"), btnGhost, flWindow, func() {
 		s.editSource(&model.CalendarSource{Type: model.SourceCalDAV, Enabled: true, SyncInterval: 15, Color: "#0b8043"})
 	})
-	newFlatButton(actions, glyphAdd, "Add local calendar", btnGhost, flWindow, func() {
+	newFlatButton(actions, glyphAdd, i18n.T("Add local calendar"), btnGhost, flWindow, func() {
 		s.editSource(&model.CalendarSource{Type: model.SourceLocal, Enabled: true, Color: "#8e24aa"})
 	})
 	gap, _ := walk.NewHSpacer(actions)
 	actions.Layout().(*walk.BoxLayout).SetStretchFactor(gap, 1)
-	newFlatButton(actions, glyphRefresh, "Sync now", btnGhost, flWindow, func() {
+	newFlatButton(actions, glyphRefresh, i18n.T("Sync now"), btnGhost, flWindow, func() {
 		if s.workersStale {
 			a.engine.Restart() // starts workers for new sources and syncs all
 			s.workersStale = false
 		} else {
 			a.engine.SyncNow()
 		}
-		s.status.SetText("Syncing…")
+		s.status.SetText(i18n.T("Syncing…"))
 		// A first sync of a new account (discovery included) can take a while.
 		for _, d := range []time.Duration{3 * time.Second, 10 * time.Second} {
 			time.AfterFunc(d, func() {
@@ -395,8 +401,8 @@ func (s *settingsUI) buildCalendars() {
 	})
 	s.accounts = box(p, true, walk.Margins{}, 6)
 	s.reloadAccounts()
-	c := caption(p, "Which calendars are shown is chosen with the Calendars button in the main window; an account's "+
-		"Edit dialog chooses which of its calendars are synced.")
+	c := caption(p, i18n.T("Which calendars are shown is chosen with the Calendars button in the main window; an account's "+
+		"Edit dialog chooses which of its calendars are synced."))
 	c.SetFont(uiFont(9, false))
 }
 
@@ -425,38 +431,38 @@ func (s *settingsUI) reloadAccounts() {
 		text := box(c, true, walk.Margins{}, 2)
 		walk.NewHSpacer(text) // the text column takes the free width
 		label(text, src.Name, uiFont(10, true), flText)
-		info := "Local calendar"
+		info := i18n.T("Local calendar")
 		if !src.IsLocal() {
 			info = "CalDAV"
 			if n := len(caldav.KnownCalendars(a.store, src.ID)); n > 1 {
-				info += fmt.Sprintf(" · %d calendars", n)
+				info += " · " + fmt.Sprintf(i18n.TN(n, "%d calendar", "%d calendars"), n)
 			}
 			info += " · " + core.SourceStatus(src)
 		}
 		if !src.Enabled {
-			info += " · disabled"
+			info += " · " + i18n.T("disabled")
 		}
 		l := caption(text, info)
 		if src.LastError != "" {
 			l.SetTextColor(walk.RGB(0xc4, 0x2b, 0x1c))
 		}
-		pushButton(c, "Edit…", 80, func() { s.editSource(src) })
-		pushButton(c, "Remove", 80, func() { s.removeSource(src) })
+		pushButton(c, i18n.T("Edit…"), 80, func() { s.editSource(src) })
+		pushButton(c, i18n.T("Remove"), 80, func() { s.removeSource(src) })
 	}
 }
 
 func (s *settingsUI) removeSource(src *model.CalendarSource) {
-	msg := fmt.Sprintf("Remove calendar \"%s\"?", src.Name)
+	msg := i18n.Tf("Remove calendar \"%s\"?", src.Name)
 	if src.IsLocal() {
-		msg += "\n\nAll its events will be permanently deleted."
+		msg += "\n\n" + i18n.T("All its events will be permanently deleted.")
 	} else {
-		msg += "\n\nLocal copies of its events are removed; the server is not changed."
+		msg += "\n\n" + i18n.T("Local copies of its events are removed; the server is not changed.")
 	}
-	if walk.MsgBox(s.dlg, "Remove calendar", msg, walk.MsgBoxOKCancel|walk.MsgBoxIconWarning) != walk.DlgCmdOK {
+	if walk.MsgBox(s.dlg, i18n.T("Remove calendar"), msg, walk.MsgBoxOKCancel|walk.MsgBoxIconWarning) != walk.DlgCmdOK {
 		return
 	}
 	if err := s.a.store.DeleteSource(src.ID); err != nil {
-		walk.MsgBox(s.dlg, "Error", err.Error(), walk.MsgBoxIconError)
+		walk.MsgBox(s.dlg, i18n.T("Error"), err.Error(), walk.MsgBoxIconError)
 	}
 	s.sourcesChanged, s.workersStale = true, true
 	s.reloadAccounts()
@@ -464,15 +470,15 @@ func (s *settingsUI) removeSource(src *model.CalendarSource) {
 
 func (s *settingsUI) buildReminders() {
 	p := s.addPage("reminders")
-	right := s.card(p, "Default reminders", "Used for events without reminders of their own. Several values separated by "+
-		"commas; units m, h, d, w (e.g. 15, 1h, 1d).", false)
+	right := s.card(p, i18n.T("Default reminders"), i18n.T("Used for events without reminders of their own. Several values separated by "+
+		"commas; units m, h, d, w (e.g. 15, 1h, 1d)."), false)
 	s.rems, _ = walk.NewLineEdit(right)
 	s.rems.SetText(core.FormatReminders(s.saved.DefaultReminderMinutes))
-	s.rems.SetCueBanner("e.g. 15, 1h, 1d")
+	s.rems.SetCueBanner(i18n.T("e.g. 15, 1h, 1d"))
 	s.rems.SetMinMaxSize(walk.Size{Width: 160, Height: 30}, walk.Size{Width: 160, Height: 30})
 	s.rems.TextChanged().Attach(s.updateApply)
 
-	right = s.card(p, "Snooze interval", "How many minutes Snooze postpones a reminder.", false)
+	right = s.card(p, i18n.T("Snooze interval"), i18n.T("How many minutes Snooze postpones a reminder."), false)
 	s.snooze, _ = walk.NewNumberEdit(right)
 	s.snooze.SetRange(1, 1440)
 	s.snooze.SetDecimals(0)
@@ -484,18 +490,26 @@ func (s *settingsUI) buildReminders() {
 
 func (s *settingsUI) buildAlerts() {
 	p := s.addPage("alerts")
-	right := s.card(p, "Alert about new meetings", "Play the sound and show a popup when a sync brings in a new upcoming "+
-		"event, e.g. an invitation. Calendars hidden in the main window stay quiet.", false)
+	right := s.card(p, i18n.T("Alert about new meetings"), i18n.T("Play the sound and show a popup when a sync brings in a new upcoming "+
+		"event, e.g. an invitation. Calendars hidden in the main window stay quiet."), false)
 	s.newAlerts, _ = newToggle(right, !s.saved.NewEventAlertsOff, flSurface, s.updateApply)
 }
 
 func (s *settingsUI) buildStartup() {
 	p := s.addPage("startup")
-	right := s.card(p, "Run at Windows startup", "Start Agendling when you sign in, so reminders are never missed.", false)
+	right := s.card(p, i18n.T("Run at Windows startup"), i18n.T("Start Agendling when you sign in, so reminders are never missed."), false)
 	s.startup, _ = newToggle(right, s.saved.RunAtStartup, flSurface, s.updateApply)
-	right = s.card(p, "Start minimized", "Start hidden in the system tray.", false)
+	right = s.card(p, i18n.T("Start minimized"), i18n.T("Start hidden in the system tray."), false)
 	s.minimized, _ = newToggle(right, s.saved.StartMinimized, flSurface, s.updateApply)
-	caption(p, "Closing the main window keeps Agendling running in the tray; use Exit in the tray menu to quit.")
+	right = s.card(p, i18n.T("Language"), i18n.T("Takes effect the next time Agendling starts."), false)
+	labels, tags, idx := core.LanguageChoices(s.saved.Language)
+	s.languageTags = tags
+	s.language, _ = walk.NewComboBox(right)
+	s.language.SetModel(labels)
+	s.language.SetCurrentIndex(idx)
+	s.language.SetMinMaxSize(walk.Size{Width: 200}, walk.Size{Width: 200})
+	s.language.CurrentIndexChanged().Attach(s.updateApply)
+	caption(p, i18n.T("Closing the main window keeps Agendling running in the tray; use Exit in the tray menu to quit."))
 }
 
 func (s *settingsUI) buildAbout() {
@@ -518,12 +532,12 @@ func (s *settingsUI) buildAbout() {
 	text := box(head, true, walk.Margins{}, 2)
 	walk.NewHSpacer(text)
 	label(text, appinfo.Name, uiFont(16, true), flText)
-	label(text, "Version "+appinfo.Version, uiFont(10, false), flText)
-	caption(text, "Desktop calendar with CalDAV sync and reminders.")
+	label(text, i18n.Tf("Version %s", appinfo.Version), uiFont(10, false), flText)
+	caption(text, i18n.T("Desktop calendar with CalDAV sync and reminders."))
 
-	below := s.card(p, "Updates", "Asks GitHub for the latest release, only when you press the button. Nothing is "+
-		"downloaded: a newer version is offered as a link to its release page.", true)
-	s.checkBtn = pushButton(below, "Check for updates", 150, s.checkUpdates)
+	below := s.card(p, i18n.T("Updates"), i18n.T("Asks GitHub for the latest release, only when you press the button. Nothing is "+
+		"downloaded: a newer version is offered as a link to its release page."), true)
+	s.checkBtn = pushButton(below, i18n.T("Check for updates"), 150, s.checkUpdates)
 	res := box(below, true, walk.Margins{}, 2)
 	below.Layout().(*walk.BoxLayout).SetStretchFactor(res, 1)
 	s.updText = caption(res, "")
@@ -534,26 +548,26 @@ func (s *settingsUI) buildAbout() {
 	s.updLink.SetVisible(false)
 	s.updLink.LinkActivated().Attach(func(l *walk.LinkLabelLink) { OpenURL(l.URL()) })
 
-	below = s.card(p, "Project page", "Source code, releases and issue tracker.", true)
+	below = s.card(p, i18n.T("Project page"), i18n.T("Source code, releases and issue tracker."), true)
 	link, _ := walk.NewLinkLabel(below)
 	link.SetBackground(walk.NullBrush())
 	link.SetText(`<a href="` + appinfo.Homepage + `">` + appinfo.Homepage + `</a>`)
 	link.LinkActivated().Attach(func(l *walk.LinkLabelLink) { OpenURL(l.URL()) })
 
 	if dir, err := appinfo.DataDir(); err == nil {
-		below = s.card(p, "Data folder", "Calendars, settings and the log file.", true)
+		below = s.card(p, i18n.T("Data folder"), i18n.T("Calendars, settings and the log file."), true)
 		path, _ := walk.NewLineEdit(below)
 		path.SetText(dir)
 		path.SetReadOnly(true)
 		path.SetMinMaxSize(walk.Size{Height: 30}, walk.Size{Height: 30})
 		below.Layout().(*walk.BoxLayout).SetStretchFactor(path, 1)
-		pushButton(below, "Open folder", 110, func() { OpenFolder(dir) })
+		pushButton(below, i18n.T("Open folder"), 110, func() { OpenFolder(dir) })
 	}
 }
 
 func (s *settingsUI) checkUpdates() {
 	s.checkBtn.SetEnabled(false)
-	s.updText.SetText("Checking…")
+	s.updText.SetText(i18n.T("Checking…"))
 	s.updLink.SetVisible(false)
 	go func() {
 		rel, err := update.Check(context.Background(), appinfo.Version)
@@ -577,13 +591,13 @@ func (s *settingsUI) checkUpdates() {
 func updateResult(rel update.Release, err error) (text, link string) {
 	switch {
 	case err != nil:
-		return "Could not check for updates: " + err.Error() + ".", `<a href="` + update.ReleasesPage + `">Open the releases page</a>`
+		return i18n.Tf("Could not check for updates: %v.", err), `<a href="` + update.ReleasesPage + `">` + i18n.T("Open the releases page") + `</a>`
 	case rel.Newer:
-		return "Version " + rel.Tag + " is available.", `<a href="` + rel.URL + `">Open the release page</a>`
+		return i18n.Tf("Version %s is available.", rel.Tag), `<a href="` + rel.URL + `">` + i18n.T("Open the release page") + `</a>`
 	case appinfo.Version == "dev" || !strings.HasPrefix(appinfo.Version, "v"):
-		return "This is a development build. The latest release is " + rel.Tag + ".", `<a href="` + rel.URL + `">Open the release page</a>`
+		return i18n.Tf("This is a development build. The latest release is %s.", rel.Tag), `<a href="` + rel.URL + `">` + i18n.T("Open the release page") + `</a>`
 	}
-	return "You have the latest version (" + rel.Tag + ").", ""
+	return i18n.Tf("You have the latest version (%s).", rel.Tag), ""
 }
 
 // ---------- apply ----------
@@ -592,7 +606,7 @@ func (s *settingsUI) collect() (model.AppSettings, error) {
 	st := s.a.store.Settings() // keeps settings changed outside the dialog, e.g. calendar visibility
 	mins, err := core.ParseReminders(s.rems.Text())
 	if err != nil {
-		return st, fmt.Errorf("invalid default reminders: %w", err)
+		return st, fmt.Errorf("%s: %w", i18n.T("invalid default reminders"), err)
 	}
 	st.DefaultReminderMinutes = mins
 	st.SnoozeIntervalMinutes = int(s.snooze.Value())
@@ -602,13 +616,16 @@ func (s *settingsUI) collect() (model.AppSettings, error) {
 	st.NewEventAlertsOff = !s.newAlerts.Checked()
 	st.RunAtStartup = s.startup.Checked()
 	st.StartMinimized = s.minimized.Checked()
+	if i := s.language.CurrentIndex(); i >= 0 && i < len(s.languageTags) {
+		st.Language = s.languageTags[i]
+	}
 	return st, nil
 }
 
 func (s *settingsUI) updateApply() {
 	if s.applyBtn == nil || s.rems == nil || s.snooze == nil || s.soundPath == nil || s.loop == nil ||
 		s.noLimit == nil || s.typeReminder == nil || s.typeNewEvent == nil || s.newAlerts == nil ||
-		s.startup == nil || s.minimized == nil {
+		s.startup == nil || s.minimized == nil || s.language == nil {
 		return // still being built
 	}
 	st, err := s.collect()
@@ -623,15 +640,20 @@ func (s *settingsUI) apply() bool {
 	}
 	if st.RunAtStartup != s.saved.RunAtStartup {
 		if err := SetRunAtStartup(st.RunAtStartup); err != nil {
-			walk.MsgBox(s.dlg, "Startup", "Could not update startup registration: "+err.Error(), walk.MsgBoxIconWarning)
+			walk.MsgBox(s.dlg, i18n.T("Startup"), i18n.Tf("Could not update startup registration: %v", err), walk.MsgBoxIconWarning)
 		}
 	}
 	if err := s.a.store.SaveSettings(st); err != nil {
-		walk.MsgBox(s.dlg, "Error", err.Error(), walk.MsgBoxIconError)
+		walk.MsgBox(s.dlg, i18n.T("Error"), err.Error(), walk.MsgBoxIconError)
 		return false
 	}
+	languageChanged := st.Language != s.saved.Language
 	s.saved = st
 	s.updateApply()
-	s.status.SetText("Settings saved")
+	if languageChanged {
+		s.status.SetText(i18n.T("Settings saved. Restart Agendling to change the language."))
+	} else {
+		s.status.SetText(i18n.T("Settings saved"))
+	}
 	return true
 }
