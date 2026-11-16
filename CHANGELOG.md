@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-16
+
+### Added
+- **French.** Agendling is now available in English and French, on Windows and Linux: every
+  window, menu and message, with dates in French order ("lundi 16 novembre 2026") and proper
+  plurals. It follows the language of the system; **Settings → Startup → Language** chooses
+  another one, applied the next time Agendling starts. Localization was designed and built by
+  [@jaloji](https://github.com/jaloji) (#10, #11, #12, #13) — merci beaucoup !
+
+### Changed
+- Messages with a count use the right singular or plural: "Connected, 1 calendar found",
+  "1 more new event".
+- Linux: the editor's date field shows the weekday in the app's language, and message boxes use
+  buttons in the app's language rather than the system's.
+
 ## [0.5.1] - 2026-11-16
 
 ### Added
@@ -172,7 +187,8 @@ All notable changes to this project are documented here. The format follows
 - Encrypted password storage (Windows DPAPI; AES-GCM with the desktop keyring on Linux).
 - Run at startup / start minimized.
 
-[Unreleased]: https://github.com/Georgy-Garnov/agendling/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/Georgy-Garnov/agendling/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Georgy-Garnov/agendling/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/Georgy-Garnov/agendling/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Georgy-Garnov/agendling/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Georgy-Garnov/agendling/compare/v0.3.2...v0.4.0
