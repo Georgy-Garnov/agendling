@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- Built with Go 1.26.11, which fixes GO-2026-6859 in `net/http`, reachable from the app's CalDAV
+  requests; the weekly `govulncheck` run caught it.
+
 ## [0.5.0] - 2026-11-09
 
 ### Added
