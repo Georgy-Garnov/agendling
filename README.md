@@ -146,6 +146,9 @@ calendar without deleting it.
 Settings are grouped into sections on the left (Calendars, Reminders, Sound, New meetings,
 Startup, About); type in **Search settings** to find one quickly.
 
+Agendling is available in English and French. It follows the language of your system; to choose
+another, use **Settings → Startup → Language**, which applies the next time Agendling starts.
+
 ### Choosing which calendars to show
 
 The **Calendars ▾** button in the toolbar opens a list of all your calendars, each with its colour,
