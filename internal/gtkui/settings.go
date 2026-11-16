@@ -4,6 +4,7 @@ package gtkui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/Georgy-Garnov/agendling/internal/appinfo"
 	"github.com/Georgy-Garnov/agendling/internal/caldav"
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 	"github.com/Georgy-Garnov/agendling/internal/update"
 )
@@ -47,14 +49,14 @@ func (a *App) showSettings() { a.showSettingsAt("") }
 func (a *App) showSettingsAt(page string) {
 	saved := a.store.Settings()
 	dlg, _ := gtk.DialogNew()
-	dlg.SetTitle("Settings")
+	dlg.SetTitle(i18n.T("Settings"))
 	addClass(dlg, "settings-dialog")
 	dlg.SetTransientFor(a.win)
 	dlg.SetModal(true)
 	dlg.SetDefaultSize(940, 640)
-	applyBtn, _ := dlg.AddButton("Apply", gtk.RESPONSE_APPLY)
-	dlg.AddButton("Cancel", gtk.RESPONSE_CANCEL)
-	ok, _ := dlg.AddButton("OK", gtk.RESPONSE_OK)
+	applyBtn, _ := dlg.AddButton(i18n.T("Apply"), gtk.RESPONSE_APPLY)
+	dlg.AddButton(i18n.T("Cancel"), gtk.RESPONSE_CANCEL)
+	ok, _ := dlg.AddButton(i18n.T("OK"), gtk.RESPONSE_OK)
 	okCtx, _ := ok.GetStyleContext()
 	okCtx.AddClass("suggested-action")
 	dlg.SetDefaultResponse(gtk.RESPONSE_OK)
@@ -120,11 +122,11 @@ func (a *App) showSettingsAt(page string) {
 		}
 	}
 	remove := func(src *model.CalendarSource) {
-		msg := fmt.Sprintf("Remove calendar \"%s\"?\n\n", src.Name)
+		msg := i18n.Tf("Remove calendar \"%s\"?", src.Name) + "\n\n"
 		if src.IsLocal() {
-			msg += "All its events will be permanently deleted."
+			msg += i18n.T("All its events will be permanently deleted.")
 		} else {
-			msg += "Local copies of its events are removed; the server is not changed."
+			msg += i18n.T("Local copies of its events are removed; the server is not changed.")
 		}
 		if !a.confirm(dlg, msg) {
 			return
@@ -148,23 +150,23 @@ func (a *App) showSettingsAt(page string) {
 			c.PackStart(dot, false, false, 0)
 			text, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 2)
 			text.PackStart(markupLabel("<b>"+glib.MarkupEscapeText(src.Name)+"</b>"), false, false, 0)
-			info := "Local calendar"
+			info := i18n.T("Local calendar")
 			if !src.IsLocal() {
 				info = "CalDAV"
 				if n := len(caldav.KnownCalendars(a.store, src.ID)); n > 1 {
-					info += fmt.Sprintf(" · %d calendars", n)
+					info += " · " + fmt.Sprintf(i18n.TN(n, "%d calendar", "%d calendars"), n)
 				}
 				info += " · " + core.SourceStatus(src)
 			}
 			if !src.Enabled {
-				info += " · disabled"
+				info += " · " + i18n.T("disabled")
 			}
 			text.PackStart(caption(info), false, false, 0)
 			c.PackStart(text, true, true, 0)
-			rm := button("Remove", func() { remove(src) })
+			rm := button(i18n.T("Remove"), func() { remove(src) })
 			rm.SetVAlign(gtk.ALIGN_CENTER)
 			c.PackEnd(rm, false, false, 0)
-			ed := button("Edit…", func() { edit(src) })
+			ed := button(i18n.T("Edit…"), func() { edit(src) })
 			ed.SetVAlign(gtk.ALIGN_CENTER)
 			c.PackEnd(ed, false, false, 0)
 			accounts.PackStart(c, false, false, 0)
@@ -184,13 +186,13 @@ func (a *App) showSettingsAt(page string) {
 		return b
 	}
 	btns, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
-	btns.PackStart(flat("list-add-symbolic", "Add CalDAV account", func() {
+	btns.PackStart(flat("list-add-symbolic", i18n.T("Add CalDAV account"), func() {
 		edit(&model.CalendarSource{Type: model.SourceCalDAV, Enabled: true, SyncInterval: 15, Color: "#0b8043"})
 	}), false, false, 0)
-	btns.PackStart(flat("list-add-symbolic", "Add local calendar", func() {
+	btns.PackStart(flat("list-add-symbolic", i18n.T("Add local calendar"), func() {
 		edit(&model.CalendarSource{Type: model.SourceLocal, Enabled: true, Color: "#8e24aa"})
 	}), false, false, 0)
-	btns.PackEnd(flat("view-refresh-symbolic", "Sync now", func() {
+	btns.PackEnd(flat("view-refresh-symbolic", i18n.T("Sync now"), func() {
 		if workersStale {
 			a.svc.Engine.Restart() // starts workers for new sources and syncs all
 			workersStale = false
@@ -210,32 +212,32 @@ func (a *App) showSettingsAt(page string) {
 	calPage := newPage("calendars")
 	calPage.PackStart(btns, false, false, 0)
 	calPage.PackStart(accounts, false, false, 0)
-	calPage.PackStart(caption("Which calendars are shown is chosen with the Calendars button in the main window; an "+
-		"account's Edit dialog chooses which of its calendars are synced."), false, false, 4)
+	calPage.PackStart(caption(i18n.T("Which calendars are shown is chosen with the Calendars button in the main window; an "+
+		"account's Edit dialog chooses which of its calendars are synced.")), false, false, 4)
 
 	// ----- Reminders -----
 	rems, _ := gtk.EntryNew()
 	rems.SetText(core.FormatReminders(saved.DefaultReminderMinutes))
-	rems.SetPlaceholderText("e.g. 15, 1h, 1d")
+	rems.SetPlaceholderText(i18n.T("e.g. 15, 1h, 1d"))
 	rems.SetWidthChars(18)
 	snooze, _ := gtk.SpinButtonNewWithRange(1, 1440, 1)
 	snooze.SetValue(float64(saved.SnoozeIntervalMinutes))
 	remPage := newPage("reminders")
-	remPage.PackStart(card("Default reminders", "Used for events without reminders of their own. "+
-		"Several values separated by commas; units m, h, d, w (e.g. 15, 1h, 1d).", rems, false), false, false, 0)
-	remPage.PackStart(card("Snooze interval, minutes", "How long Snooze postpones a reminder.", snooze, false), false, false, 0)
+	remPage.PackStart(card(i18n.T("Default reminders"), i18n.T("Used for events without reminders of their own. "+
+		"Several values separated by commas; units m, h, d, w (e.g. 15, 1h, 1d)."), rems, false), false, false, 0)
+	remPage.PackStart(card(i18n.T("Snooze interval, minutes"), i18n.T("How long Snooze postpones a reminder."), snooze, false), false, false, 0)
 
 	// ----- Sound -----
 	var soundEntries []*gtk.Entry   // connected to updateApply below
 	var soundSwitches []*gtk.Switch // likewise
 	browseSound := func(entry *gtk.Entry) {
-		fc, err := gtk.FileChooserDialogNewWith2Buttons("Choose alert sound", dlg, gtk.FILE_CHOOSER_ACTION_OPEN,
-			"Cancel", gtk.RESPONSE_CANCEL, "Open", gtk.RESPONSE_ACCEPT)
+		fc, err := gtk.FileChooserDialogNewWith2Buttons(i18n.T("Choose alert sound"), dlg, gtk.FILE_CHOOSER_ACTION_OPEN,
+			i18n.T("Cancel"), gtk.RESPONSE_CANCEL, i18n.T("Open"), gtk.RESPONSE_ACCEPT)
 		if err != nil {
 			return
 		}
 		filter, _ := gtk.FileFilterNew()
-		filter.SetName("Audio files (*.mp3, *.wav)")
+		filter.SetName(i18n.T("Audio files (*.mp3, *.wav)"))
 		for _, p := range []string{"*.mp3", "*.wav", "*.MP3", "*.WAV"} {
 			filter.AddPattern(p)
 		}
@@ -249,20 +251,20 @@ func (a *App) showSettingsAt(page string) {
 		path = strings.TrimSpace(path)
 		go func() {
 			if err := a.svc.Audio.Play(path); err != nil {
-				ui(func() { a.message(dlg, gtk.MESSAGE_WARNING, "Sound: "+err.Error()) })
+				ui(func() { a.message(dlg, gtk.MESSAGE_WARNING, i18n.Tf("Sound: %v", err)) })
 			}
 		}()
 	}
 	soundBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
 	sound, _ := gtk.EntryNew()
 	sound.SetText(saved.CustomSoundPath)
-	sound.SetPlaceholderText("built-in chime")
+	sound.SetPlaceholderText(i18n.T("built-in chime"))
 	soundBox.PackStart(sound, true, true, 0)
-	soundBox.PackStart(button("Browse…", func() { browseSound(sound) }), false, false, 0)
-	soundBox.PackStart(button("Clear", func() { sound.SetText("") }), false, false, 0)
+	soundBox.PackStart(button(i18n.T("Browse…"), func() { browseSound(sound) }), false, false, 0)
+	soundBox.PackStart(button(i18n.T("Clear"), func() { sound.SetText("") }), false, false, 0)
 	testBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
-	testBox.PackStart(button("▶ Test", func() { testSound(entryText(sound)) }), false, false, 0)
-	testBox.PackStart(button("■ Stop", a.svc.Audio.Stop), false, false, 0)
+	testBox.PackStart(button("▶ "+i18n.T("Test"), func() { testSound(entryText(sound)) }), false, false, 0)
+	testBox.PackStart(button("■ "+i18n.T("Stop"), a.svc.Audio.Stop), false, false, 0)
 	loop, _ := gtk.SwitchNew()
 	loop.SetActive(saved.LoopSound)
 
@@ -289,22 +291,22 @@ func (a *App) showSettingsAt(page string) {
 		return l
 	}
 	limitBox.PackStart(limitMin, false, false, 0)
-	limitBox.PackStart(unit("min"), false, false, 0)
+	limitBox.PackStart(unit(i18n.T("min")), false, false, 0)
 	limitBox.PackStart(limitSec, false, false, 0)
-	limitBox.PackStart(unit("sec"), false, false, 0)
-	noLimitLabel, _ := gtk.LabelNew("No limit")
+	limitBox.PackStart(unit(i18n.T("sec")), false, false, 0)
+	noLimitLabel, _ := gtk.LabelNew(i18n.T("No limit"))
 	noLimitLabel.SetMarginStart(12)
 	limitBox.PackStart(noLimitLabel, false, false, 0)
 	noLimit.SetVAlign(gtk.ALIGN_CENTER)
 	limitBox.PackStart(noLimit, false, false, 0)
 
 	soundPage := newPage("sound")
-	soundPage.PackStart(card("Alert sound", "Used for every alert unless a kind of alert or a calendar below has a "+
-		"sound of its own. An MP3 or WAV file; leave empty for the built-in chime.", soundBox, true), false, false, 0)
-	soundPage.PackStart(card("Try it", "Plays the chosen sound once.", testBox, false), false, false, 0)
-	soundPage.PackStart(card("Repeat until stopped", "Keep playing the sound until you press Stop Sound or the "+
-		"maximum length below is reached.", loop, false), false, false, 0)
-	soundPage.PackStart(card("Maximum length", "How long a sound may play.", limitBox, false), false, false, 0)
+	soundPage.PackStart(card(i18n.T("Alert sound"), i18n.T("Used for every alert unless a kind of alert or a calendar below has a "+
+		"sound of its own. An MP3 or WAV file; leave empty for the built-in chime."), soundBox, true), false, false, 0)
+	soundPage.PackStart(card(i18n.T("Try it"), i18n.T("Plays the chosen sound once."), testBox, false), false, false, 0)
+	soundPage.PackStart(card(i18n.T("Repeat until stopped"), i18n.T("Keep playing the sound until you press Stop Sound or the "+
+		"maximum length below is reached."), loop, false), false, false, 0)
+	soundPage.PackStart(card(i18n.T("Maximum length"), i18n.T("How long a sound may play."), limitBox, false), false, false, 0)
 
 	// A "custom sound" switch and the file row it reveals.
 	type soundOption struct {
@@ -325,9 +327,9 @@ func (a *App) showSettingsAt(page string) {
 		row.SetMarginStart(28)
 		o.path, _ = gtk.EntryNew()
 		o.path.SetText(snd.Path)
-		o.path.SetPlaceholderText("built-in chime")
+		o.path.SetPlaceholderText(i18n.T("built-in chime"))
 		row.PackStart(o.path, true, true, 0)
-		row.PackStart(button("Browse…", func() { browseSound(o.path) }), false, false, 0)
+		row.PackStart(button(i18n.T("Browse…"), func() { browseSound(o.path) }), false, false, 0)
 		row.PackStart(button("▶", func() { testSound(entryText(o.path)) }), false, false, 0)
 		row.PackStart(button("■", a.svc.Audio.Stop), false, false, 0)
 		card.PackStart(row, false, false, 0)
@@ -386,14 +388,14 @@ func (a *App) showSettingsAt(page string) {
 		return line
 	}
 
-	section("By kind of alert", "Switch on a sound of its own for reminders or for new meetings; otherwise they use "+
-		"the alert sound above.")
-	c, top := soundCard("Meeting reminders", "Before an event starts.", "")
+	section(i18n.T("By kind of alert"), i18n.T("Switch on a sound of its own for reminders or for new meetings; otherwise they use "+
+		"the alert sound above."))
+	c, top := soundCard(i18n.T("Meeting reminders"), i18n.T("Before an event starts."), "")
 	typeReminder := addOption(top, c, saved.TypeSounds.Reminder)
-	c, top = soundCard("New meetings", "When a sync brings in a new upcoming event, e.g. an invitation.", "")
+	c, top = soundCard(i18n.T("New meetings"), i18n.T("When a sync brings in a new upcoming event, e.g. an invitation."), "")
 	typeNewEvent := addOption(top, c, saved.TypeSounds.NewEvent)
 
-	section("By calendar", "A calendar's own sound comes first, then its account's, then the sounds above.")
+	section(i18n.T("By calendar"), i18n.T("A calendar's own sound comes first, then its account's, then the sounds above."))
 	type calendarSounds struct {
 		key                string
 		reminder, newEvent soundOption
@@ -406,16 +408,16 @@ func (a *App) showSettingsAt(page string) {
 		}
 		snd := saved.CalendarSounds[t.Key]
 		calSounds = append(calSounds, calendarSounds{key: t.Key,
-			reminder: addOption(optionLine(c, "Reminder sound"), c, snd.Reminder),
-			newEvent: addOption(optionLine(c, "New meeting sound"), c, snd.NewEvent)})
+			reminder: addOption(optionLine(c, i18n.T("Reminder sound")), c, snd.Reminder),
+			newEvent: addOption(optionLine(c, i18n.T("New meeting sound")), c, snd.NewEvent)})
 	}
 
 	// ----- New meetings -----
 	newAlerts, _ := gtk.SwitchNew()
 	newAlerts.SetActive(!saved.NewEventAlertsOff)
 	alertsPage := newPage("alerts")
-	alertsPage.PackStart(card("Alert about new meetings", "Play the sound and show a popup when a sync brings in a new "+
-		"upcoming event, e.g. an invitation. Calendars unticked in the main window stay quiet.", newAlerts, false), false, false, 0)
+	alertsPage.PackStart(card(i18n.T("Alert about new meetings"), i18n.T("Play the sound and show a popup when a sync brings in a new "+
+		"upcoming event, e.g. an invitation. Calendars unticked in the main window stay quiet."), newAlerts, false), false, false, 0)
 
 	// ----- Startup -----
 	startup, _ := gtk.SwitchNew()
@@ -423,18 +425,26 @@ func (a *App) showSettingsAt(page string) {
 	minimized, _ := gtk.SwitchNew()
 	minimized.SetActive(saved.StartMinimized)
 	startPage := newPage("startup")
-	startPage.PackStart(card("Run at login", "Start Agendling when you log in, so reminders are never missed.", startup, false), false, false, 0)
-	startPage.PackStart(card("Start minimized", "Start hidden in the system tray.", minimized, false), false, false, 0)
+	startPage.PackStart(card(i18n.T("Run at login"), i18n.T("Start Agendling when you log in, so reminders are never missed."), startup, false), false, false, 0)
+	startPage.PackStart(card(i18n.T("Start minimized"), i18n.T("Start hidden in the system tray."), minimized, false), false, false, 0)
+	// The language applies at the next start; a stored language that is not available stays listed.
+	langLabels, langTags, langIdx := core.LanguageChoices(saved.Language)
+	language, _ := gtk.ComboBoxTextNew()
+	for _, l := range langLabels {
+		language.AppendText(l)
+	}
+	language.SetActive(langIdx)
+	startPage.PackStart(card(i18n.T("Language"), i18n.T("Takes effect the next time Agendling starts."), language, false), false, false, 0)
 	closeChoice, _ := gtk.ComboBoxTextNew()
-	for _, l := range []string{"Ask", "Keep running minimized", "Quit"} {
+	for _, l := range []string{i18n.T("Ask"), i18n.T("Keep running minimized"), i18n.T("Quit")} {
 		closeChoice.AppendText(l)
 	}
 	closeChoice.SetActive(map[string]int{"": 0, model.CloseMinimize: 1, model.CloseQuit: 2}[saved.CloseWithoutTray])
-	startPage.PackStart(card("Closing the window without a tray", "Without a system tray to return from, keep Agendling "+
-		"running minimized for reminders, or quit.", closeChoice, false), false, false, 0)
-	startPage.PackStart(caption("With a tray, closing the main window keeps Agendling running there; use Exit in the tray menu "+
+	startPage.PackStart(card(i18n.T("Closing the window without a tray"), i18n.T("Without a system tray to return from, keep Agendling "+
+		"running minimized for reminders, or quit."), closeChoice, false), false, false, 0)
+	startPage.PackStart(caption(i18n.T("With a tray, closing the main window keeps Agendling running there; use Exit in the tray menu "+
 		"or Quit in the ☰ menu (Ctrl+Q) to quit. On GNOME the tray icon needs the AppIndicator extension (enabled by "+
-		"default on Ubuntu)."), false, false, 4)
+		"default on Ubuntu).")), false, false, 4)
 
 	// ----- About -----
 	aboutPage := newPage("about")
@@ -462,17 +472,17 @@ func (a *App) showSettingsAt(page string) {
 	}
 	headText, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 2)
 	headText.PackStart(markupLabel("<span size='x-large' weight='bold'>"+appinfo.Name+"</span>"), false, false, 0)
-	headText.PackStart(markupLabel("Version "+glib.MarkupEscapeText(appinfo.Version)), false, false, 0)
-	headText.PackStart(caption("Desktop calendar with CalDAV sync and reminders."), false, false, 0)
+	headText.PackStart(markupLabel(glib.MarkupEscapeText(i18n.Tf("Version %s", appinfo.Version))), false, false, 0)
+	headText.PackStart(caption(i18n.T("Desktop calendar with CalDAV sync and reminders.")), false, false, 0)
 	head.PackStart(headText, true, true, 0)
 	aboutPage.PackStart(head, false, false, 0)
 
 	updBox, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 6)
 	updResult := link("")
 	var checkBtn *gtk.Button
-	checkBtn = button("Check for updates", func() {
+	checkBtn = button(i18n.T("Check for updates"), func() {
 		checkBtn.SetSensitive(false)
-		updResult.SetText("Checking…")
+		updResult.SetText(i18n.T("Checking…"))
 		go func() {
 			rel, err := update.Check(context.Background(), appinfo.Version)
 			ui(func() {
@@ -487,17 +497,17 @@ func (a *App) showSettingsAt(page string) {
 	checkBtn.SetHAlign(gtk.ALIGN_START)
 	updBox.PackStart(checkBtn, false, false, 0)
 	updBox.PackStart(updResult, false, false, 0)
-	aboutPage.PackStart(card("Updates", "Asks GitHub for the latest release, only when you press the button. "+
-		"Nothing is downloaded: a newer version is offered as a link to its release page.", updBox, true), false, false, 0)
-	aboutPage.PackStart(card("Project page", "", link(`<a href="`+appinfo.Homepage+`">`+appinfo.Homepage+`</a>`), true), false, false, 0)
+	aboutPage.PackStart(card(i18n.T("Updates"), i18n.T("Asks GitHub for the latest release, only when you press the button. "+
+		"Nothing is downloaded: a newer version is offered as a link to its release page."), updBox, true), false, false, 0)
+	aboutPage.PackStart(card(i18n.T("Project page"), "", link(`<a href="`+appinfo.Homepage+`">`+appinfo.Homepage+`</a>`), true), false, false, 0)
 	if dir, err := appinfo.DataDir(); err == nil {
 		dataBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
 		dl, _ := gtk.LabelNew(dir)
 		dl.SetSelectable(true)
 		dl.SetXAlign(0)
 		dataBox.PackStart(dl, true, true, 0)
-		dataBox.PackEnd(button("Open folder", func() { openURL("file://" + dir) }), false, false, 0)
-		aboutPage.PackStart(card("Data folder", "Calendars, settings and the log file.", dataBox, true), false, false, 0)
+		dataBox.PackEnd(button(i18n.T("Open folder"), func() { openURL("file://" + dir) }), false, false, 0)
+		aboutPage.PackStart(card(i18n.T("Data folder"), i18n.T("Calendars, settings and the log file."), dataBox, true), false, false, 0)
 	}
 
 	// ----- Layout: search and sections on the left, the selected page on the right -----
@@ -509,11 +519,11 @@ func (a *App) showSettingsAt(page string) {
 		body.SetMarginEnd(28)
 		body.SetMarginTop(18)
 		body.SetMarginBottom(18)
-		t, _ := gtk.LabelNew(p.Title)
+		t, _ := gtk.LabelNew(i18n.T(p.Title))
 		t.SetXAlign(0)
 		addClass(t, "settings-title")
 		body.PackStart(t, false, false, 0)
-		intro := caption(p.Intro)
+		intro := caption(i18n.T(p.Intro))
 		intro.SetMarginBottom(8)
 		body.PackStart(intro, false, false, 0)
 		body.PackStart(pages[p.Key], true, true, 0)
@@ -532,7 +542,7 @@ func (a *App) showSettingsAt(page string) {
 	addClass(nav, "settings-nav")
 	nav.SetSizeRequest(240, -1)
 	search, _ := gtk.SearchEntryNew()
-	search.SetPlaceholderText("Search settings")
+	search.SetPlaceholderText(i18n.T("Search settings"))
 	search.SetMarginStart(10)
 	search.SetMarginEnd(10)
 	search.SetMarginTop(12)
@@ -556,7 +566,7 @@ func (a *App) showSettingsAt(page string) {
 		if img, err := gtk.ImageNewFromIconName(p.Icon, gtk.ICON_SIZE_MENU); err == nil {
 			rb.PackStart(img, false, false, 0)
 		}
-		l, _ := gtk.LabelNew(p.Title)
+		l, _ := gtk.LabelNew(i18n.T(p.Title))
 		l.SetXAlign(0)
 		rb.PackStart(l, true, true, 0)
 		row.Add(rb)
@@ -596,7 +606,7 @@ func (a *App) showSettingsAt(page string) {
 		st := a.store.Settings() // keeps settings changed outside the dialog, e.g. calendar ticks
 		mins, err := core.ParseReminders(entryText(rems))
 		if err != nil {
-			return st, fmt.Errorf("invalid default reminders: %w", err)
+			return st, fmt.Errorf("%s: %w", i18n.T("invalid default reminders"), err)
 		}
 		st.DefaultReminderMinutes = mins
 		st.SnoozeIntervalMinutes = snooze.GetValueAsInt()
@@ -606,7 +616,7 @@ func (a *App) showSettingsAt(page string) {
 		if !noLimit.GetActive() {
 			st.SoundLimitSeconds = limitMin.GetValueAsInt()*60 + limitSec.GetValueAsInt()
 			if st.SoundLimitSeconds <= 0 {
-				return st, fmt.Errorf("the maximum sound length must be at least one second, or switch on No limit")
+				return st, errors.New(i18n.T("the maximum sound length must be at least one second, or switch on No limit"))
 			}
 		}
 		st.TypeSounds = model.AlertSounds{Reminder: collectOption(typeReminder), NewEvent: collectOption(typeNewEvent)}
@@ -622,6 +632,9 @@ func (a *App) showSettingsAt(page string) {
 		st.RunAtStartup = startup.GetActive()
 		st.StartMinimized = minimized.GetActive()
 		st.CloseWithoutTray = []string{"", model.CloseMinimize, model.CloseQuit}[max(closeChoice.GetActive(), 0)]
+		if i := language.GetActive(); i >= 0 && i < len(langTags) {
+			st.Language = langTags[i]
+		}
 		return st, nil
 	}
 	dirty := func() bool {
@@ -639,6 +652,7 @@ func (a *App) showSettingsAt(page string) {
 		sw.Connect("notify::active", updateApply)
 	}
 	closeChoice.Connect("changed", updateApply)
+	language.Connect("changed", updateApply)
 	apply := func() bool {
 		st, err := collect()
 		if err != nil {
@@ -647,15 +661,19 @@ func (a *App) showSettingsAt(page string) {
 		}
 		if st.RunAtStartup != saved.RunAtStartup {
 			if err := setRunAtStartup(st.RunAtStartup); err != nil {
-				a.message(dlg, gtk.MESSAGE_WARNING, "Could not update autostart: "+err.Error())
+				a.message(dlg, gtk.MESSAGE_WARNING, i18n.Tf("Could not update autostart: %v", err))
 			}
 		}
 		if err := a.store.SaveSettings(st); err != nil {
 			a.message(dlg, gtk.MESSAGE_ERROR, err.Error())
 			return false
 		}
+		languageChanged := st.Language != saved.Language
 		saved = st
 		updateApply()
+		if languageChanged {
+			a.message(dlg, gtk.MESSAGE_INFO, i18n.T("Settings saved. Restart Agendling to change the language."))
+		}
 		return true
 	}
 
@@ -692,13 +710,16 @@ func updateMarkup(rel update.Release, err error) string {
 	esc := glib.MarkupEscapeText
 	switch {
 	case err != nil:
-		return "Could not check for updates: " + esc(err.Error()) + `. <a href="` + update.ReleasesPage + `">Open the releases page</a>`
+		return esc(i18n.Tf("Could not check for updates: %v.", err)) + ` <a href="` + update.ReleasesPage + `">` +
+			esc(i18n.T("Open the releases page")) + `</a>`
 	case rel.Newer:
-		return "Version <b>" + esc(rel.Tag) + "</b> is available: <a href=\"" + esc(rel.URL) + "\">open the release page</a>"
+		return fmt.Sprintf(esc(i18n.T("Version %s is available.")), "<b>"+esc(rel.Tag)+"</b>") +
+			` <a href="` + esc(rel.URL) + `">` + esc(i18n.T("Open the release page")) + `</a>`
 	case appinfo.Version == "dev" || !strings.HasPrefix(appinfo.Version, "v"):
-		return "This is a development build. The latest release is <a href=\"" + esc(rel.URL) + "\">" + esc(rel.Tag) + "</a>."
+		return fmt.Sprintf(esc(i18n.T("This is a development build. The latest release is %s.")),
+			`<a href="`+esc(rel.URL)+`">`+esc(rel.Tag)+`</a>`)
 	}
-	return "You have the latest version (" + esc(rel.Tag) + ")."
+	return esc(i18n.Tf("You have the latest version (%s).", rel.Tag))
 }
 
 // editSource shows the calendar account dialog; it returns true when saved.
@@ -710,12 +731,12 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 	dlg.SetDefaultSize(620, -1)
 	addClass(dlg, "settings-dialog")
 	if isCalDAV {
-		dlg.SetTitle("CalDAV account")
+		dlg.SetTitle(i18n.T("CalDAV account"))
 	} else {
-		dlg.SetTitle("Local calendar")
+		dlg.SetTitle(i18n.T("Local calendar"))
 	}
-	dlg.AddButton("Cancel", gtk.RESPONSE_CANCEL)
-	ok, _ := dlg.AddButton("OK", gtk.RESPONSE_OK)
+	dlg.AddButton(i18n.T("Cancel"), gtk.RESPONSE_CANCEL)
+	ok, _ := dlg.AddButton(i18n.T("OK"), gtk.RESPONSE_OK)
 	addClass(ok, "suggested-action")
 	dlg.SetDefaultResponse(gtk.RESPONSE_OK)
 
@@ -759,18 +780,18 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 	name, _ := gtk.EntryNew()
 	name.SetText(src.Name)
 	name.SetHExpand(true)
-	add("Name", name)
+	add(i18n.T("Name"), name)
 	c := core.ParseColor(src.Color)
 	r, gg, b := c.Floats()
 	colorBtn, _ := gtk.ColorButtonNewWithRGBA(gdk.NewRGBA(r, gg, b, 1))
 	colorBtn.SetHAlign(gtk.ALIGN_START)
-	add("Colour", colorBtn)
+	add(i18n.T("Colour"), colorBtn)
 	enabledRow, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 12)
 	enabledText, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 2)
-	el, _ := gtk.LabelNew("Enabled")
+	el, _ := gtk.LabelNew(i18n.T("Enabled"))
 	el.SetXAlign(0)
 	enabledText.PackStart(el, false, false, 0)
-	enabledText.PackStart(captionLabel("Show this calendar and keep it synchronized."), false, false, 0)
+	enabledText.PackStart(captionLabel(i18n.T("Show this calendar and keep it synchronized.")), false, false, 0)
 	enabledRow.PackStart(enabledText, true, true, 0)
 	enabled, _ := gtk.SwitchNew()
 	enabled.SetActive(src.Enabled)
@@ -798,7 +819,7 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 		calBox.GetChildren().Foreach(func(w any) { w.(gtk.IWidget).ToWidget().Destroy() })
 		choices, switches = list, nil
 		if len(list) == 0 {
-			calBox.PackStart(captionLabel("Test the connection to list the calendars of this account."), false, false, 0)
+			calBox.PackStart(captionLabel(i18n.T("Test the connection to list the calendars of this account.")), false, false, 0)
 		}
 		for _, ch := range list {
 			row, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 12)
@@ -853,31 +874,31 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 		urlE.SetPlaceholderText("https://caldav.example.com")
 		urlE.SetHExpand(true)
 		urlE.Connect("changed", func() { fresh = false })
-		add("Server URL", urlE)
-		add("", captionLabel("For example https://caldav.icloud.com or https://host/remote.php/dav (Nextcloud). "+
-			"A URL pointing at a single calendar syncs only that calendar."))
+		add(i18n.T("Server URL"), urlE)
+		add("", captionLabel(i18n.T("For example https://caldav.icloud.com or https://host/remote.php/dav (Nextcloud). "+
+			"A URL pointing at a single calendar syncs only that calendar.")))
 		user, _ = gtk.EntryNew()
 		user.SetText(src.Username)
 		user.Connect("changed", func() { fresh = false })
-		add("Username", user)
+		add(i18n.T("Username"), user)
 		pass, _ = gtk.EntryNew()
 		pass.SetText(src.Password)
 		pass.SetVisibility(false)
 		pass.SetInputPurpose(gtk.INPUT_PURPOSE_PASSWORD)
-		add("App password", pass)
+		add(i18n.T("App password"), pass)
 
 		certBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 10)
 		certText := captionLabel("")
 		certBox.PackStart(certText, true, true, 0)
 		var showCert func()
-		forget := button("Forget", func() {
+		forget := button(i18n.T("Forget"), func() {
 			trusted = ""
 			showCert()
 		})
 		forget.SetVAlign(gtk.ALIGN_CENTER)
 		certBox.PackEnd(forget, false, false, 0)
 		showCert = func() {
-			certText.SetText("Certificate trusted, SHA-256 " + caldav.ShortFingerprint(trusted))
+			certText.SetText(i18n.Tf("Certificate trusted, SHA-256 %s", caldav.ShortFingerprint(trusted)))
 			certText.SetTooltipText(caldav.FormatFingerprint(trusted))
 			certBox.SetVisible(trusted != "")
 		}
@@ -895,7 +916,7 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 		runTest = func() {
 			s := collect()
 			testBtn.SetSensitive(false)
-			result.SetText("Connecting…")
+			result.SetText(i18n.T("Connecting…"))
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 				defer cancel()
@@ -903,7 +924,7 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 				ui(func() {
 					testBtn.SetSensitive(true)
 					if cert := caldav.UntrustedCertificate(err); cert != nil {
-						result.SetMarkup(`<span foreground="#c42b1c">The server's certificate is not trusted.</span>`)
+						result.SetMarkup(`<span foreground="#c42b1c">` + glib.MarkupEscapeText(i18n.T("The server's certificate is not trusted.")) + `</span>`)
 						if a.confirmCertificate(dlg, caldav.DescribeCertificate(cert)) {
 							trusted = caldav.CertFingerprint(cert)
 							showCert()
@@ -915,22 +936,22 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 						result.SetMarkup(`<span foreground="#c42b1c">` + glib.MarkupEscapeText(err.Error()) + `</span>`)
 						return
 					}
-					result.SetMarkup(`<span foreground="#0f7b3f">` + fmt.Sprintf("Connected, %d calendar(s) found", len(cals)) + `</span>`)
+					result.SetMarkup(`<span foreground="#0f7b3f">` + glib.MarkupEscapeText(fmt.Sprintf(i18n.TN(len(cals), "Connected, %d calendar found", "Connected, %d calendars found"), len(cals))) + `</span>`)
 					fillCalendars(core.CalendarChoices(cals, s.HiddenCollections)) // keeps choices made so far
 					fresh = true
 				})
 			}()
 		}
-		testBtn = button("Test connection", runTest)
+		testBtn = button(i18n.T("Test connection"), runTest)
 		testRow.PackStart(testBtn, false, false, 0)
 		testRow.PackStart(result, true, true, 0)
 		add("", testRow)
 
 		cg, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 8)
 		addClass(cg, "settings-card")
-		cg.PackStart(markupLabel("<b>Calendars to sync</b>"), false, false, 0)
-		cg.PackStart(captionLabel("Turned-off calendars are not downloaded at all. Which synced calendars are shown is "+
-			"chosen with the Calendars button in the main window."), false, false, 0)
+		cg.PackStart(markupLabel("<b>"+glib.MarkupEscapeText(i18n.T("Calendars to sync"))+"</b>"), false, false, 0)
+		cg.PackStart(captionLabel(i18n.T("Turned-off calendars are not downloaded at all. Which synced calendars are shown is "+
+			"chosen with the Calendars button in the main window.")), false, false, 0)
 		cg.PackStart(calBox, false, false, 4)
 		body.PackStart(cg, false, false, 0)
 
@@ -938,14 +959,14 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 		interval, _ = gtk.ComboBoxTextNew()
 		idx := 2
 		for i, it := range core.SyncIntervals {
-			interval.AppendText(it.Label)
+			interval.AppendText(i18n.T(it.Label))
 			if it.Mins == src.SyncInterval {
 				idx = i
 			}
 		}
 		interval.SetActive(idx)
 		interval.SetHAlign(gtk.ALIGN_START)
-		addSync("Sync", interval)
+		addSync(i18n.T("Sync"), interval)
 
 		if src.ID != 0 {
 			fillCalendars(core.CalendarChoices(caldav.KnownCalendars(a.store, src.ID), src.HiddenCollections))
@@ -962,15 +983,15 @@ func (a *App) editSource(parent gtk.IWindow, src *model.CalendarSource) bool {
 	for dlg.Run() == gtk.RESPONSE_OK {
 		s := collect()
 		if s.Name == "" {
-			a.message(dlg, gtk.MESSAGE_WARNING, "Please enter a name.")
+			a.message(dlg, gtk.MESSAGE_WARNING, i18n.T("Please enter a name."))
 			continue
 		}
 		if isCalDAV && (s.URL == "" || s.Username == "") {
-			a.message(dlg, gtk.MESSAGE_WARNING, "Server URL and username are required.")
+			a.message(dlg, gtk.MESSAGE_WARNING, i18n.T("Server URL and username are required."))
 			continue
 		}
 		if _, anyShown := core.HiddenCalendars(shownChoices()); isCalDAV && fresh && len(choices) > 0 && !anyShown {
-			a.message(dlg, gtk.MESSAGE_WARNING, "Turn on at least one calendar, or turn off Enabled to hide the whole account.")
+			a.message(dlg, gtk.MESSAGE_WARNING, i18n.T("Turn on at least one calendar, or turn off Enabled to hide the whole account."))
 			continue
 		}
 		if err := a.store.SaveSource(s); err != nil {

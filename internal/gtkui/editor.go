@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 )
-
-const dateLayout = "Mon 02.01.2006"
 
 func (a *App) newEvent(start time.Time, allDay bool) {
 	e := &model.Event{StartTime: start, EndTime: start.Add(time.Hour), AllDay: allDay}
@@ -27,7 +27,7 @@ func (a *App) newEvent(start time.Time, allDay bool) {
 func (a *App) editOccurrence(occ model.Occurrence) {
 	e, err := a.store.Event(occ.Event.ID)
 	if err != nil {
-		a.message(a.win, gtk.MESSAGE_WARNING, "This event no longer exists.")
+		a.message(a.win, gtk.MESSAGE_WARNING, i18n.T("This event no longer exists."))
 		a.view.reload()
 		return
 	}
@@ -35,14 +35,18 @@ func (a *App) editOccurrence(occ model.Occurrence) {
 }
 
 func (a *App) message(parent gtk.IWindow, kind gtk.MessageType, text string) {
-	d := gtk.MessageDialogNew(parent, gtk.DIALOG_MODAL, kind, gtk.BUTTONS_OK, "%s", text)
+	// Buttons of our own: GTK's stock ones follow the system language, not the app's.
+	d := gtk.MessageDialogNew(parent, gtk.DIALOG_MODAL, kind, gtk.BUTTONS_NONE, "%s", text)
+	d.AddButton(i18n.T("OK"), gtk.RESPONSE_OK)
 	d.Run()
 	d.Destroy()
 }
 
 func (a *App) confirm(parent gtk.IWindow, text string) bool {
-	d := gtk.MessageDialogNew(parent, gtk.DIALOG_MODAL, gtk.MESSAGE_QUESTION, gtk.BUTTONS_OK_CANCEL, "%s", text)
+	d := gtk.MessageDialogNew(parent, gtk.DIALOG_MODAL, gtk.MESSAGE_QUESTION, gtk.BUTTONS_NONE, "%s", text)
 	defer d.Destroy()
+	d.AddButton(i18n.T("Cancel"), gtk.RESPONSE_CANCEL)
+	d.AddButton(i18n.T("OK"), gtk.RESPONSE_OK)
 	return d.Run() == gtk.RESPONSE_OK
 }
 
@@ -59,7 +63,7 @@ func newDateField(t time.Time) *dateField {
 	ctx.AddClass("linked")
 	f.entry, _ = gtk.EntryNew()
 	f.entry.SetWidthChars(15)
-	f.entry.SetText(t.Format(dateLayout))
+	f.entry.SetText(core.DateFieldText(t))
 	mb, _ := gtk.MenuButtonNew()
 	pop, _ := gtk.PopoverNew(mb)
 	cal, _ := gtk.CalendarNew()
@@ -72,7 +76,7 @@ func newDateField(t time.Time) *dateField {
 	cal.Connect("day-selected-double-click", func() { pop.Popdown() })
 	cal.Connect("day-selected", func() {
 		y, m, d := cal.GetDate()
-		f.entry.SetText(time.Date(int(y), time.Month(m+1), int(d), 0, 0, 0, 0, time.Local).Format(dateLayout))
+		f.entry.SetText(core.DateFieldText(time.Date(int(y), time.Month(m+1), int(d), 0, 0, 0, 0, time.Local)))
 	})
 	cal.Show()
 	pop.Add(cal)
@@ -84,13 +88,7 @@ func newDateField(t time.Time) *dateField {
 
 func (f *dateField) date() (time.Time, error) {
 	s, _ := f.entry.GetText()
-	s = strings.TrimSpace(s)
-	for _, layout := range []string{dateLayout, "02.01.2006", "2.1.2006", "2006-01-02"} {
-		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
-			return t, nil
-		}
-	}
-	return time.Time{}, fmt.Errorf("invalid date %q (use DD.MM.YYYY)", s)
+	return core.ParseDateField(s)
 }
 
 func timeCombo(t time.Time) *gtk.ComboBoxText {
@@ -122,7 +120,7 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 	isNew := e.ID == 0
 	cals, calIdx := a.svc.EditableCalendars(e)
 	if len(cals) == 0 {
-		a.message(a.win, gtk.MESSAGE_INFO, "Add a calendar in Settings first.")
+		a.message(a.win, gtk.MESSAGE_INFO, i18n.T("Add a calendar in Settings first."))
 		return
 	}
 
@@ -131,18 +129,18 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 	dlg.SetModal(true)
 	dlg.SetDefaultSize(540, 600)
 	if isNew {
-		dlg.SetTitle("New event")
+		dlg.SetTitle(i18n.T("New event"))
 	} else {
-		dlg.SetTitle("Edit event")
+		dlg.SetTitle(i18n.T("Edit event"))
 	}
 	const respDelete = gtk.ResponseType(1)
 	if !isNew {
-		del, _ := dlg.AddButton("Delete", respDelete)
+		del, _ := dlg.AddButton(i18n.T("Delete"), respDelete)
 		delCtx, _ := del.GetStyleContext()
 		delCtx.AddClass("destructive-action")
 	}
-	dlg.AddButton("Cancel", gtk.RESPONSE_CANCEL)
-	save, _ := dlg.AddButton("Save", gtk.RESPONSE_OK)
+	dlg.AddButton(i18n.T("Cancel"), gtk.RESPONSE_CANCEL)
+	save, _ := dlg.AddButton(i18n.T("Save"), gtk.RESPONSE_OK)
 	saveCtx, _ := save.GetStyleContext()
 	saveCtx.AddClass("suggested-action")
 	dlg.SetDefaultResponse(gtk.RESPONSE_OK)
@@ -172,7 +170,7 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 
 	title, _ := gtk.EntryNew()
 	title.SetText(e.Title)
-	title.SetPlaceholderText("Event title")
+	title.SetPlaceholderText(i18n.T("Event title"))
 	title.SetHExpand(true)
 	title.SetActivatesDefault(true)
 	addClass(title, "event-title")
@@ -184,7 +182,7 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 		calCombo.AppendText(c.Label())
 	}
 	calCombo.SetActive(calIdx)
-	addRow("Calendar", calCombo)
+	addRow(i18n.T("Calendar"), calCombo)
 
 	displayEnd := e.EndTime
 	if e.AllDay {
@@ -201,10 +199,10 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 		b.PackStart(t, false, false, 0)
 		return b
 	}
-	addRow("Start", pair(startDate, startTime))
-	addRow("End", pair(endDate, endTime))
+	addRow(i18n.T("Start"), pair(startDate, startTime))
+	addRow(i18n.T("End"), pair(endDate, endTime))
 
-	allDay, _ := gtk.CheckButtonNewWithLabel("All-day event")
+	allDay, _ := gtk.CheckButtonNewWithLabel(i18n.T("All-day event"))
 	allDay.SetActive(e.AllDay)
 	syncAllDay := func() {
 		startTime.SetSensitive(!allDay.GetActive())
@@ -220,19 +218,19 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 		repeat.AppendText(l)
 	}
 	repeat.SetActive(repeatIdx)
-	addRow("Repeat", repeat)
+	addRow(i18n.T("Repeat"), repeat)
 
 	location, _ := gtk.EntryNew()
 	location.SetText(e.Location)
-	addRow("Location", location)
+	addRow(i18n.T("Location"), location)
 
 	urlBox, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
 	urlEntry, _ := gtk.EntryNew()
 	urlEntry.SetText(e.URL)
 	urlEntry.SetHExpand(true)
 	urlBox.PackStart(urlEntry, true, true, 0)
-	urlBox.PackStart(button("Open", func() { openURL(entryText(urlEntry)) }), false, false, 0)
-	addRow("Web link", urlBox)
+	urlBox.PackStart(button(i18n.T("Open"), func() { openURL(entryText(urlEntry)) }), false, false, 0)
+	addRow(i18n.T("Web link"), urlBox)
 
 	rems, _ := gtk.EntryNew()
 	if len(e.Reminders) > 0 {
@@ -242,8 +240,8 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 		}
 		rems.SetText(core.FormatReminders(mins))
 	}
-	rems.SetPlaceholderText("default: " + core.FormatReminders(a.store.Settings().DefaultReminderMinutes) + "  (e.g. 5, 15, 1h, 1d)")
-	addRow("Reminders", rems)
+	rems.SetPlaceholderText(i18n.Tf("default: %s  (e.g. 5, 15, 1h, 1d)", core.FormatReminders(a.store.Settings().DefaultReminderMinutes)))
+	addRow(i18n.T("Reminders"), rems)
 
 	desc, _ := gtk.TextViewNew()
 	desc.SetWrapMode(gtk.WRAP_WORD_CHAR)
@@ -257,7 +255,7 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 	sw.SetVExpand(true)
 	sw.SetMinContentHeight(120)
 	sw.Add(desc)
-	descLabel, _ := gtk.LabelNew("Description")
+	descLabel, _ := gtk.LabelNew(i18n.T("Description"))
 	descLabel.SetXAlign(0)
 	descLabel.SetYAlign(0)
 	addClass(descLabel, "settings-field")
@@ -280,9 +278,9 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 	row++
 
 	if e.RRule != "" && e.RecurrenceID.IsZero() {
-		addRow("", markupLabel(`<span foreground="#6e6e6e">Recurring event: changes apply to the whole series.</span>`))
+		addRow("", markupLabel(`<span foreground="#6e6e6e">`+glib.MarkupEscapeText(i18n.T("Recurring event: changes apply to the whole series."))+`</span>`))
 	} else if !e.RecurrenceID.IsZero() {
-		addRow("", markupLabel(`<span foreground="#6e6e6e">This is a modified occurrence of a recurring event.</span>`))
+		addRow("", markupLabel(`<span foreground="#6e6e6e">`+glib.MarkupEscapeText(i18n.T("This is a modified occurrence of a recurring event."))+`</span>`))
 	}
 
 	content, _ := dlg.GetContentArea()
@@ -317,7 +315,7 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 				in.Calendar = &cals[i]
 			}
 			if err := a.svc.ApplyEdit(e, in); err != nil {
-				a.message(dlg, gtk.MESSAGE_WARNING, "Cannot save: "+err.Error())
+				a.message(dlg, gtk.MESSAGE_WARNING, i18n.Tf("Cannot save: %v", err))
 				continue
 			}
 		case respDelete:
@@ -344,10 +342,10 @@ func (a *App) deleteEvent(parent gtk.IWindow, e *model.Event, occStart time.Time
 	var err error
 	if e.RRule != "" || !e.RecurrenceID.IsZero() {
 		d := gtk.MessageDialogNew(parent, gtk.DIALOG_MODAL, gtk.MESSAGE_QUESTION, gtk.BUTTONS_NONE,
-			"%s", "Delete this recurring event?")
-		d.AddButton("Cancel", gtk.RESPONSE_CANCEL)
-		d.AddButton("Entire series", gtk.RESPONSE_NO)
-		d.AddButton("Only this occurrence", gtk.RESPONSE_YES)
+			"%s", i18n.T("Delete this recurring event?"))
+		d.AddButton(i18n.T("Cancel"), gtk.RESPONSE_CANCEL)
+		d.AddButton(i18n.T("Entire series"), gtk.RESPONSE_NO)
+		d.AddButton(i18n.T("Only this occurrence"), gtk.RESPONSE_YES)
 		resp := d.Run()
 		d.Destroy()
 		switch resp {
@@ -359,13 +357,13 @@ func (a *App) deleteEvent(parent gtk.IWindow, e *model.Event, occStart time.Time
 			return false
 		}
 	} else {
-		if !a.confirm(parent, fmt.Sprintf("Delete \"%s\"?", core.EventTitle(e))) {
+		if !a.confirm(parent, i18n.Tf("Delete \"%s\"?", core.EventTitle(e))) {
 			return false
 		}
 		err = a.svc.RemoveSeries(e.CalendarID, e.UID)
 	}
 	if err != nil {
-		a.message(parent, gtk.MESSAGE_ERROR, "Delete failed: "+err.Error())
+		a.message(parent, gtk.MESSAGE_ERROR, i18n.Tf("Delete failed: %v", err))
 		return false
 	}
 	return true

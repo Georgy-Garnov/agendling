@@ -12,6 +12,7 @@ import (
 	"github.com/gotk3/gotk3/pango"
 
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 )
 
 const dayPopoverMaxRows = 12
@@ -39,10 +40,10 @@ func (v *calView) showDayPopover(day time.Time, r rect) {
 	}
 	header, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
 	header.SetMarginStart(6)
-	title := markupLabel("<b>" + glib.MarkupEscapeText(day.Format("Monday, 2 January")) + "</b>")
+	title := markupLabel("<b>" + glib.MarkupEscapeText(i18n.Date(day, "Monday, 2 January")) + "</b>")
 	title.SetXAlign(0)
 	header.PackStart(title, true, true, 0)
-	link := button("Open day", openDay)
+	link := button(i18n.T("Open day"), openDay)
 	link.SetRelief(gtk.RELIEF_NONE)
 	addClass(link, "day-popover-link")
 	header.PackEnd(link, false, false, 0)
@@ -61,7 +62,7 @@ func (v *calView) showDayPopover(day time.Time, r rect) {
 		row, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 10)
 		mark, when := "●", o.Start.Format("15:04")
 		if core.IsAllDayLike(o) {
-			mark, when = "■", "all day"
+			mark, when = "■", i18n.T("all day")
 		}
 		dot := markupLabel(`<span foreground="` + v.colorOf(o).Hex() + `">` + mark + `</span>`)
 		row.PackStart(dot, false, false, 0)
@@ -85,7 +86,7 @@ func (v *calView) showDayPopover(day time.Time, r rect) {
 		box.PackStart(b, false, false, 0)
 	}
 	if more > 0 {
-		b := button(fmt.Sprintf("%d more in the day view", more), openDay)
+		b := button(fmt.Sprintf(i18n.TN(more, "%d more in the day view", "%d more in the day view"), more), openDay)
 		b.SetRelief(gtk.RELIEF_NONE)
 		addClass(b, "day-popover-link")
 		box.PackStart(b, false, false, 0)

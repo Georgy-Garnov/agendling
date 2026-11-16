@@ -12,6 +12,7 @@ import (
 	"github.com/gotk3/gotk3/gtk"
 
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 	"github.com/Georgy-Garnov/agendling/internal/scheduler"
 )
@@ -70,7 +71,7 @@ func (a *App) showNewEvents(sourceID int64, events []*model.Event) {
 		a.alerts[w] = true
 	}
 	if rest > 0 {
-		notify("New events", fmt.Sprintf("%d more new events", rest))
+		notify(i18n.T("New events"), fmt.Sprintf(i18n.TN(rest, "%d more new event", "%d more new events"), rest))
 	}
 	if len(alerts) > 0 || rest > 0 {
 		var first scheduler.Alert // one sound for the batch: that of the first event shown
@@ -93,9 +94,9 @@ func (w *alertWindow) create() {
 	win, _ := gtk.WindowNew(gtk.WINDOW_TOPLEVEL)
 	w.win = win
 	if w.isNew {
-		win.SetTitle("New event — " + title)
+		win.SetTitle(i18n.Tf("New event — %s", title))
 	} else {
-		win.SetTitle("Reminder — " + title)
+		win.SetTitle(i18n.Tf("Reminder — %s", title))
 	}
 	win.SetDefaultSize(460, 320)
 	win.SetKeepAbove(true)
@@ -110,7 +111,7 @@ func (w *alertWindow) create() {
 	box.SetMarginBottom(12)
 
 	if w.isNew {
-		box.PackStart(markupLabel("<b>New event added to "+html.EscapeString(calName)+"</b>"), false, false, 0)
+		box.PackStart(markupLabel("<b>"+html.EscapeString(i18n.Tf("New event added to %s", calName))+"</b>"), false, false, 0)
 	}
 	box.PackStart(markupLabel(`<span size="x-large" weight="bold">`+html.EscapeString(title)+`</span>`), false, false, 0)
 	box.PackStart(markupLabel(html.EscapeString(core.WhenText(al))), false, false, 0)
@@ -152,18 +153,18 @@ func (w *alertWindow) create() {
 	}
 
 	buttons, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
-	stop := button("Stop Sound", w.app.svc.Audio.Stop)
+	stop := button(i18n.T("Stop Sound"), w.app.svc.Audio.Stop)
 	if img, err := gtk.ImageNewFromIconName("audio-volume-muted-symbolic", gtk.ICON_SIZE_BUTTON); err == nil {
 		stop.SetImage(img)
 		stop.SetAlwaysShowImage(true)
 	}
 	buttons.PackStart(stop, false, false, 0)
-	dismiss := button("Dismiss", w.dismiss)
+	dismiss := button(i18n.T("Dismiss"), w.dismiss)
 	buttons.PackEnd(dismiss, false, false, 0)
 	if w.isNew {
-		buttons.PackEnd(button("Open in calendar", w.openInCalendar), false, false, 0)
+		buttons.PackEnd(button(i18n.T("Open in calendar"), w.openInCalendar), false, false, 0)
 	} else {
-		buttons.PackEnd(button("Snooze", w.doSnooze), false, false, 0)
+		buttons.PackEnd(button(i18n.T("Snooze"), w.doSnooze), false, false, 0)
 		w.snooze, _ = gtk.ComboBoxTextNew()
 		labels, cur := core.SnoozeLabels(w.app.store.Settings().SnoozeIntervalMinutes)
 		for _, l := range labels {
