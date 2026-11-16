@@ -15,6 +15,7 @@ import (
 
 	"github.com/Georgy-Garnov/agendling/internal/appinfo"
 	"github.com/Georgy-Garnov/agendling/internal/gtkui"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/storage"
 )
 
@@ -46,8 +47,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("open database: %v", err)
 	}
+	settings := store.Settings()
+	log.Printf("language: %s (setting %q)", i18n.Use(settings.Language), settings.Language)
 	app := gtkui.NewApp(store)
-	if err := app.Run(*minimized || store.Settings().StartMinimized, activations); err != nil {
+	if err := app.Run(*minimized || settings.StartMinimized, activations); err != nil {
 		log.Fatal(err)
 	}
 	store.Close()

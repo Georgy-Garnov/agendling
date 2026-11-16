@@ -5,6 +5,7 @@ import (
 	"maps"
 	"strings"
 
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 )
 
@@ -50,15 +51,15 @@ func (s *Service) SoundTargets() []SoundTarget {
 	var res []SoundTarget
 	for _, src := range srcs {
 		cals := s.calendarsOf(src, nil)
-		t := SoundTarget{Key: sourceKey(src.ID), Source: src, Name: src.Name, Detail: "CalDAV account"}
+		t := SoundTarget{Key: sourceKey(src.ID), Source: src, Name: src.Name, Detail: i18n.T("CalDAV account")}
 		switch {
 		case src.IsLocal():
-			t.Detail = "Local calendar"
+			t.Detail = i18n.T("Local calendar")
 		case len(cals) > 1:
-			t.Detail = fmt.Sprintf("CalDAV account · %d calendars", len(cals))
+			t.Detail += " · " + fmt.Sprintf(i18n.TN(len(cals), "%d calendar", "%d calendars"), len(cals))
 		}
 		if !src.Enabled {
-			t.Detail += " · disabled"
+			t.Detail += " · " + i18n.T("disabled")
 		}
 		res = append(res, t)
 		if len(cals) > 1 {

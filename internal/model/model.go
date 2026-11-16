@@ -133,6 +133,9 @@ type AppSettings struct {
 	// HiddenCalendars holds the keys (core.Calendar.Key) of calendars unticked in the main
 	// window's calendar list; their events are not drawn but still synced and reminded of.
 	HiddenCalendars []string
+	// Language is the UI language tag (e.g. "fr"); "" follows the system. It takes effect at the
+	// next start.
+	Language string `json:",omitempty"`
 }
 
 // Sound is an optional replacement of the main alert sound, used while Custom is on. Path keeps
