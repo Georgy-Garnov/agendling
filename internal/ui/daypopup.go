@@ -11,6 +11,7 @@ import (
 	"github.com/lxn/win"
 
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 )
 
@@ -156,7 +157,7 @@ func (p *dayPopup) close() {
 }
 
 func (p *dayPopup) openDayRect(b walk.Rectangle) walk.Rectangle {
-	w := scale(p.list, textWidth("Open day", uiFont(10, false))+8)
+	w := scale(p.list, textWidth(i18n.T("Open day"), uiFont(10, false))+8)
 	return walk.Rectangle{X: b.Width - w - scale(p.list, 16), Y: 0, Width: w + scale(p.list, 8), Height: scale(p.list, dpHeader)}
 }
 
@@ -182,12 +183,12 @@ func (p *dayPopup) paint(cv *walk.Canvas, b walk.Rectangle) {
 	bg.Dispose()
 
 	header := walk.Rectangle{X: px(16), Y: 0, Width: b.Width - px(32), Height: px(dpHeader)}
-	drawText(cv, p.day.Format("Monday, 2 January"), uiFont(11, true), flText, header, textLeftMiddle)
+	drawText(cv, i18n.Date(p.day, "Monday, 2 January"), uiFont(11, true), flText, header, textLeftMiddle)
 	link := flAccent
 	if p.hover == dpOpenDay {
 		link = flAccentHover
 	}
-	drawText(cv, "Open day", uiFont(10, false), link, p.openDayRect(b), walk.TextRight|walk.TextVCenter|walk.TextSingleLine)
+	drawText(cv, i18n.T("Open day"), uiFont(10, false), link, p.openDayRect(b), walk.TextRight|walk.TextVCenter|walk.TextSingleLine)
 	line := solid(flLine)
 	cv.FillRectanglePixels(line, walk.Rectangle{X: px(12), Y: px(dpHeader) - px(1), Width: b.Width - px(24), Height: px(1)})
 	line.Dispose()
@@ -200,7 +201,7 @@ func (p *dayPopup) paint(cv *walk.Canvas, b walk.Rectangle) {
 			rowBg = flHover
 		}
 		if i == len(p.items) { // the events that did not fit
-			drawText(cv, fmt.Sprintf("%d more in the day view", p.more), uiFont(10, false), flAccent,
+			drawText(cv, fmt.Sprintf(i18n.TN(p.more, "%d more in the day view", "%d more in the day view"), p.more), uiFont(10, false), flAccent,
 				walk.Rectangle{X: r.X + px(12), Y: r.Y, Width: r.Width - px(24), Height: r.Height}, textLeftMiddle)
 			continue
 		}
@@ -210,7 +211,7 @@ func (p *dayPopup) paint(cv *walk.Canvas, b walk.Rectangle) {
 		radius := d / 2
 		when := o.Start.Format("15:04")
 		if core.IsAllDayLike(o) {
-			radius, when = px(3), "all day"
+			radius, when = px(3), i18n.T("all day")
 		}
 		if dot, err := roundedBitmap(d, d, p.list.DPI(), radius, rowBg, col, col, false); err == nil {
 			cv.DrawImagePixels(dot, walk.Point{X: r.X + px(12), Y: r.Y + (r.Height-d)/2})

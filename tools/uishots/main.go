@@ -2,7 +2,8 @@
 
 // Command uishots opens Agendling with demo data (see internal/demo), saves screenshots of its
 // windows into the given directory, and exits; the screenshots in docs/ are made with it. Build
-// with "make uishots" and run "uishots.exe DIR" on Windows.
+// with "make uishots" and run "uishots.exe DIR [LANGUAGE]" on Windows. The language (e.g. "fr")
+// defaults to English, so the documentation does not depend on the language of the machine.
 package main
 
 import (
@@ -11,15 +12,23 @@ import (
 	"path/filepath"
 
 	"github.com/Georgy-Garnov/agendling/internal/demo"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/storage"
 	"github.com/Georgy-Garnov/agendling/internal/ui"
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		log.Fatal("usage: uishots DIR")
+	if len(os.Args) < 2 || len(os.Args) > 3 {
+		log.Fatal("usage: uishots DIR [LANGUAGE]")
 	}
 	dir := os.Args[1]
+	lang := "en"
+	if len(os.Args) == 3 {
+		lang = os.Args[2]
+	}
+	if got := i18n.Use(lang); got != lang {
+		log.Fatalf("language %q is not available", lang)
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		log.Fatal(err)
 	}

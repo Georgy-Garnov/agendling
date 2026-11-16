@@ -3,7 +3,6 @@
 package ui
 
 import (
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/Georgy-Garnov/agendling/internal/appinfo"
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 )
 
@@ -29,7 +29,7 @@ func (a *App) editOccurrence(occ model.Occurrence) {
 	// Re-read so we edit the current stored state, not a stale view copy.
 	e, err := a.store.Event(occ.Event.ID)
 	if err != nil {
-		walk.MsgBox(a.mw, appinfo.Name, "This event no longer exists.", walk.MsgBoxIconWarning)
+		walk.MsgBox(a.mw, appinfo.Name, i18n.T("This event no longer exists."), walk.MsgBoxIconWarning)
 		a.view.Reload()
 		return
 	}
@@ -75,7 +75,7 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 		calNames = append(calNames, c.Label())
 	}
 	if len(cals) == 0 {
-		walk.MsgBox(a.mw, appinfo.Name, "Add a calendar in Settings first.", walk.MsgBoxIconInformation)
+		walk.MsgBox(a.mw, appinfo.Name, i18n.T("Add a calendar in Settings first."), walk.MsgBoxIconInformation)
 		return
 	}
 
@@ -104,14 +104,14 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 
 	seriesNote := ""
 	if e.RRule != "" && e.RecurrenceID.IsZero() {
-		seriesNote = "Recurring event: changes apply to the whole series."
+		seriesNote = i18n.T("Recurring event: changes apply to the whole series.")
 	} else if !e.RecurrenceID.IsZero() {
-		seriesNote = "This is a modified occurrence of a recurring event."
+		seriesNote = i18n.T("This is a modified occurrence of a recurring event.")
 	}
 
-	title := "Edit event"
+	title := i18n.T("Edit event")
 	if isNew {
-		title = "New event"
+		title = i18n.T("New event")
 	}
 	times := core.TimeChoices()
 	field := func(text string) Label {
@@ -134,22 +134,22 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 			Composite{
 				Layout: VBox{Margins: Margins{Left: 20, Top: 18, Right: 20, Bottom: 16}, Spacing: 10},
 				Children: []Widget{
-					LineEdit{AssignTo: &w.title, Text: e.Title, CueBanner: "Event title", Font: Font{Family: "Segoe UI", PointSize: 14},
+					LineEdit{AssignTo: &w.title, Text: e.Title, CueBanner: i18n.T("Event title"), Font: Font{Family: "Segoe UI", PointSize: 14},
 						MinSize: Size{Height: 36}},
 					Composite{
 						AssignTo: &cards[0],
 						Layout:   cardLayout(),
 						Children: []Widget{
-							field("Calendar"),
+							field(i18n.T("Calendar")),
 							ComboBox{AssignTo: &w.calendar, Model: calNames, CurrentIndex: calIdx},
-							field("Starts"),
+							field(i18n.T("Starts")),
 							Composite{Layout: HBox{MarginsZero: true}, Background: TransparentBrush{}, Children: []Widget{
 								DateEdit{AssignTo: &w.startDate, Date: e.StartTime, Format: "ddd dd.MM.yyyy", MinSize: Size{Width: 150}},
 								ComboBox{AssignTo: &w.startTime, Editable: true, Model: times, Value: e.StartTime.Format("15:04"),
 									MinSize: Size{Width: 90}, MaxSize: Size{Width: 90}},
 								HSpacer{},
 							}},
-							field("Ends"),
+							field(i18n.T("Ends")),
 							Composite{Layout: HBox{MarginsZero: true}, Background: TransparentBrush{}, Children: []Widget{
 								DateEdit{AssignTo: &w.endDate, Date: displayEnd, Format: "ddd dd.MM.yyyy", MinSize: Size{Width: 150}},
 								ComboBox{AssignTo: &w.endTime, Editable: true, Model: times, Value: e.EndTime.Format("15:04"),
@@ -157,12 +157,12 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 								HSpacer{},
 							}},
 							Label{Background: TransparentBrush{}},
-							CheckBox{AssignTo: &w.allDay, Text: "All-day event", Checked: e.AllDay, Background: TransparentBrush{},
+							CheckBox{AssignTo: &w.allDay, Text: i18n.T("All-day event"), Checked: e.AllDay, Background: TransparentBrush{},
 								OnCheckedChanged: func() {
 									w.startTime.SetEnabled(!w.allDay.Checked())
 									w.endTime.SetEnabled(!w.allDay.Checked())
 								}},
-							field("Repeat"),
+							field(i18n.T("Repeat")),
 							ComboBox{AssignTo: &w.repeat, Model: repeatLabels, CurrentIndex: repeatIdx},
 						},
 					},
@@ -170,23 +170,23 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 						AssignTo: &cards[1],
 						Layout:   cardLayout(),
 						Children: []Widget{
-							field("Location"),
+							field(i18n.T("Location")),
 							LineEdit{AssignTo: &w.location, Text: e.Location},
-							field("Web link"),
+							field(i18n.T("Web link")),
 							Composite{Layout: HBox{MarginsZero: true}, Background: TransparentBrush{}, Children: []Widget{
 								LineEdit{AssignTo: &w.url, Text: e.URL},
-								PushButton{Text: "Open", MinSize: Size{Width: 70}, MaxSize: Size{Width: 70},
+								PushButton{Text: i18n.T("Open"), MinSize: Size{Width: 70}, MaxSize: Size{Width: 70},
 									OnClicked: func() { OpenURL(strings.TrimSpace(w.url.Text())) }},
 							}},
-							field("Reminders"),
-							LineEdit{AssignTo: &w.rems, Text: rems, CueBanner: "default: " + defaultRems + "  (e.g. 5, 15, 1h, 1d)"},
+							field(i18n.T("Reminders")),
+							LineEdit{AssignTo: &w.rems, Text: rems, CueBanner: i18n.Tf("default: %s  (e.g. 5, 15, 1h, 1d)", defaultRems)},
 						},
 					},
 					Composite{
 						AssignTo: &cards[2],
 						Layout:   VBox{Margins: Margins{Left: 16, Top: 14, Right: 16, Bottom: 14}, Spacing: 6},
 						Children: []Widget{
-							field("Description"),
+							field(i18n.T("Description")),
 							TextEdit{AssignTo: &w.desc, Text: toCRLF(e.Description), VScroll: true, MinSize: Size{Height: 110},
 								OnTextChanged: func() { updateDescLinks(&w) }},
 							LinkLabel{AssignTo: &w.descLinks, Background: TransparentBrush{},
@@ -201,21 +201,21 @@ func (a *App) editEvent(e *model.Event, occStart time.Time) {
 				Background: SolidColorBrush{Color: flSurface},
 				Layout:     HBox{Margins: Margins{Left: 20, Top: 14, Right: 20, Bottom: 14}, Spacing: 8},
 				Children: []Widget{
-					PushButton{AssignTo: &deleteBtn, Text: "Delete", Visible: !isNew, MinSize: Size{Width: 96, Height: 32},
+					PushButton{AssignTo: &deleteBtn, Text: i18n.T("Delete"), Visible: !isNew, MinSize: Size{Width: 96, Height: 32},
 						OnClicked: func() {
 							if a.deleteEvent(w.dlg, e, occStart) {
 								w.dlg.Cancel()
 							}
 						}},
 					HSpacer{},
-					PushButton{AssignTo: &acceptBtn, Text: "Save", MinSize: Size{Width: 96, Height: 32}, OnClicked: func() {
+					PushButton{AssignTo: &acceptBtn, Text: i18n.T("Save"), MinSize: Size{Width: 96, Height: 32}, OnClicked: func() {
 						if err := a.applyEditor(&w, e, cals, customRule); err != nil {
-							walk.MsgBox(w.dlg, "Cannot save", err.Error(), walk.MsgBoxIconWarning)
+							walk.MsgBox(w.dlg, i18n.T("Cannot save"), err.Error(), walk.MsgBoxIconWarning)
 							return
 						}
 						acceptLater(w.dlg)
 					}},
-					PushButton{AssignTo: &cancelBtn, Text: "Cancel", MinSize: Size{Width: 96, Height: 32}, OnClicked: func() { w.dlg.Cancel() }},
+					PushButton{AssignTo: &cancelBtn, Text: i18n.T("Cancel"), MinSize: Size{Width: 96, Height: 32}, OnClicked: func() { w.dlg.Cancel() }},
 				},
 			},
 		},
@@ -269,8 +269,8 @@ func (a *App) deleteEvent(owner walk.Form, e *model.Event, occStart time.Time) b
 	recurring := e.RRule != "" || !e.RecurrenceID.IsZero()
 	onlyThis := false
 	if recurring {
-		switch walk.MsgBox(owner, "Delete recurring event",
-			"Delete only this occurrence?\n\nYes — only this occurrence\nNo — the entire series",
+		switch walk.MsgBox(owner, i18n.T("Delete recurring event"),
+			i18n.T("Delete only this occurrence?\n\nYes — only this occurrence\nNo — the entire series"),
 			walk.MsgBoxYesNoCancel|walk.MsgBoxIconQuestion) {
 		case walk.DlgCmdYes:
 			onlyThis = true
@@ -278,7 +278,7 @@ func (a *App) deleteEvent(owner walk.Form, e *model.Event, occStart time.Time) b
 		default:
 			return false
 		}
-	} else if walk.MsgBox(owner, "Delete event", fmt.Sprintf("Delete \"%s\"?", e.Title),
+	} else if walk.MsgBox(owner, i18n.T("Delete event"), i18n.Tf("Delete \"%s\"?", e.Title),
 		walk.MsgBoxOKCancel|walk.MsgBoxIconQuestion) != walk.DlgCmdOK {
 		return false
 	}
@@ -290,7 +290,7 @@ func (a *App) deleteEvent(owner walk.Form, e *model.Event, occStart time.Time) b
 		err = a.svc.RemoveSeries(e.CalendarID, e.UID)
 	}
 	if err != nil {
-		walk.MsgBox(owner, "Delete failed", err.Error(), walk.MsgBoxIconError)
+		walk.MsgBox(owner, i18n.T("Delete failed"), err.Error(), walk.MsgBoxIconError)
 		return false
 	}
 	return true

@@ -11,6 +11,7 @@ import (
 	. "github.com/lxn/walk/declarative"
 
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 	"github.com/Georgy-Garnov/agendling/internal/scheduler"
 )
@@ -29,7 +30,7 @@ func (a *App) showAlert(al scheduler.Alert) {
 	if err := w.create(); err != nil {
 		// Fall back to a tray balloon so the reminder is never lost.
 		if a.ni != nil {
-			a.ni.ShowInfo("Reminder: "+al.Event.Title, al.Start.Format("Mon 2 Jan 15:04"))
+			a.ni.ShowInfo(i18n.Tf("Reminder: %s", al.Event.Title), i18n.Date(al.Start, "Mon 2 Jan 15:04"))
 		}
 		return
 	}
@@ -42,7 +43,7 @@ func (w *alertWindow) create() error {
 	e := al.Event
 	title := e.Title
 	if title == "" {
-		title = "(No title)"
+		title = i18n.T("(No title)")
 	}
 	calName, calColor := "", ParseColor("")
 	if al.Calendar != nil {
@@ -51,9 +52,9 @@ func (w *alertWindow) create() error {
 			calName = al.Calendar.Name
 		}
 	}
-	windowTitle := "Reminder — " + title
+	windowTitle := i18n.Tf("Reminder — %s", title)
 	if w.isNew {
-		windowTitle = "New event — " + title
+		windowTitle = i18n.Tf("New event — %s", title)
 	}
 	desc := strings.TrimSpace(core.PlainText(e.Description))
 	height := 250
@@ -82,7 +83,7 @@ func (w *alertWindow) create() error {
 	}
 
 	if w.isNew {
-		label(content, "New meeting", uiFont(9, true), flAccent)
+		label(content, i18n.T("New meeting"), uiFont(9, true), flAccent)
 	}
 	t := caption(content, title)
 	t.SetFont(uiFont(16, true))
@@ -131,19 +132,19 @@ func (w *alertWindow) create() error {
 		walk.NewVSpacer(content)
 	}
 
-	pushButton(bar, "Stop sound", 110, w.stopSound)
+	pushButton(bar, i18n.T("Stop sound"), 110, w.stopSound)
 	walk.NewHSpacer(bar)
 	if w.isNew {
-		pushButton(bar, "Open in calendar", 140, w.openInCalendar)
-		pushButton(bar, "Dismiss", 96, w.dismiss)
+		pushButton(bar, i18n.T("Open in calendar"), 140, w.openInCalendar)
+		pushButton(bar, i18n.T("Dismiss"), 96, w.dismiss)
 	} else {
 		items, cur := core.SnoozeLabels(w.app.store.Settings().SnoozeIntervalMinutes)
 		w.snooze, _ = walk.NewComboBox(bar)
 		w.snooze.SetModel(items)
 		w.snooze.SetCurrentIndex(cur)
 		w.snooze.SetMinMaxSize(walk.Size{Width: 90}, walk.Size{Width: 90})
-		pushButton(bar, "Snooze", 96, w.doSnooze)
-		pushButton(bar, "Dismiss", 96, w.dismiss)
+		pushButton(bar, i18n.T("Snooze"), 96, w.doSnooze)
+		pushButton(bar, i18n.T("Dismiss"), 96, w.dismiss)
 	}
 
 	if w.app.icon != nil {
@@ -185,7 +186,7 @@ func (a *App) showNewEvents(sourceID int64, events []*model.Event) {
 		shown++
 	}
 	if rest += len(alerts) - shown; rest > 0 && a.ni != nil {
-		a.ni.ShowInfo("New events", fmt.Sprintf("%d more new events", rest))
+		a.ni.ShowInfo(i18n.T("New events"), fmt.Sprintf(i18n.TN(rest, "%d more new event", "%d more new events"), rest))
 	}
 	if len(alerts) > 0 || rest > 0 {
 		var first scheduler.Alert // one sound for the batch: that of the first event shown
