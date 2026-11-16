@@ -13,6 +13,7 @@ import (
 	"github.com/gotk3/gotk3/pango"
 
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 	"github.com/Georgy-Garnov/agendling/internal/recur"
 )
@@ -132,7 +133,7 @@ func (v *calView) reload() {
 	from, to := core.ViewRange(v.mode, v.anchor)
 	events, err := v.app.svc.ViewEvents(from, to)
 	if err != nil {
-		v.app.setStatus("Failed to load events: " + err.Error())
+		v.app.setStatus(i18n.Tf("Failed to load events: %v", err))
 	}
 	v.occs = recur.Expand(events, from, to)
 	v.cals = map[int64]*model.CalendarSource{}
@@ -330,16 +331,16 @@ func (v *calView) paintTimeGrid(cr *cairo.Context, w, h float64, from time.Time,
 		if core.SameDay(d, now) {
 			col, f = core.ColAccent, v.bold
 		}
-		label := d.Format("Mon 2")
+		label := i18n.Date(d, "Mon 2")
 		if days == 1 {
-			label = d.Format("Monday, 2 January")
+			label = i18n.Date(d, "Monday, 2 January")
 		}
 		v.text(cr, label, f, col, r, single|center|vcenter)
 		v.hits = append(v.hits, hit{kind: hitDay, r: r, day: d})
 		vline(cr, core.ColGrid, colX(i), 0, top)
 	}
 	vline(cr, core.ColGrid, colX(days), 0, top)
-	v.text(cr, "all-day", v.small, core.ColMuted, rect{4, headerH + 2, gutter - 6, 16}, single)
+	v.text(cr, i18n.T("all-day"), v.small, core.ColMuted, rect{4, headerH + 2, gutter - 6, 16}, single)
 	for _, s := range spans {
 		r := rect{colX(s.Col0) + 2, headerH + 2 + float64(s.Row)*rowH, colX(s.Col1+1) - colX(s.Col0) - 4, rowH - 2}
 		v.paintAllDayBar(cr, r, s.O)
@@ -419,7 +420,7 @@ func (v *calView) paintCells(cr *cairo.Context, w, h float64, from time.Time, we
 			}
 			label := fmt.Sprint(d.Day())
 			if d.Day() == 1 || (wk == 0 && i == 0) {
-				label = d.Format("2 Jan")
+				label = i18n.Date(d, "2 Jan")
 			}
 			numR := rect{x0 + 4, y0 + 2, cell.w - 8, 18}
 			v.text(cr, label, numFont, numCol, numR, single)
@@ -447,7 +448,7 @@ func (v *calView) paintCells(cr *cairo.Context, w, h float64, from time.Time, we
 			}
 			if rest := len(items) - show; rest > 0 && y+lineH-2 <= y1 {
 				r := rect{x0 + 6, y, cell.w - 8, lineH - 2}
-				v.text(cr, fmt.Sprintf("+%d more", rest), v.small, core.ColAccent, r, single|vcenter)
+				v.text(cr, fmt.Sprintf(i18n.TN(rest, "+%d more", "+%d more"), rest), v.small, core.ColAccent, r, single|vcenter)
 				v.hits = append(v.hits, hit{kind: hitMore, r: r, day: d})
 			}
 		}
@@ -456,7 +457,7 @@ func (v *calView) paintCells(cr *cairo.Context, w, h float64, from time.Time, we
 	fill(cr, rect{0, 0, w, headerH}, core.ColBackground)
 	for i := 0; i < 7; i++ {
 		d := from.AddDate(0, 0, i)
-		v.text(cr, d.Format("Monday"), v.font, core.ColMuted, rect{float64(i) * cellW, 0, cellW, headerH}, single|center|vcenter)
+		v.text(cr, i18n.Date(d, "Monday"), v.font, core.ColMuted, rect{float64(i) * cellW, 0, cellW, headerH}, single|center|vcenter)
 	}
 	hline(cr, core.ColGrid, 0, w, headerH)
 	if !v.sb.s.Scrollable() || v.cellScroll >= v.sb.s.Max()-0.5 {

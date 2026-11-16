@@ -3,13 +3,12 @@
 package gtkui
 
 import (
-	"fmt"
-
 	"github.com/gotk3/gotk3/glib"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/gotk3/gotk3/pango"
 
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 )
 
 // calPicker is the header bar's Calendars button with a dropdown: one row per calendar with its
@@ -31,9 +30,9 @@ const pickerMaxHeight = 480
 func newCalPicker(a *App) *calPicker {
 	p := &calPicker{app: a}
 	p.button, _ = gtk.MenuButtonNew()
-	p.button.SetTooltipText("Choose which calendars to show")
+	p.button.SetTooltipText(i18n.T("Choose which calendars to show"))
 	inner, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
-	p.label, _ = gtk.LabelNew("Calendars")
+	p.label, _ = gtk.LabelNew(i18n.T("Calendars"))
 	inner.PackStart(p.label, false, false, 0)
 	if arrow, err := gtk.ImageNewFromIconName("pan-down-symbolic", gtk.ICON_SIZE_BUTTON); err == nil {
 		inner.PackStart(arrow, false, false, 0)
@@ -47,11 +46,11 @@ func newCalPicker(a *App) *calPicker {
 	head, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 8)
 	head.SetMarginStart(8)
 	head.SetMarginEnd(2)
-	title, _ := gtk.LabelNew("Show calendars")
+	title, _ := gtk.LabelNew(i18n.T("Show calendars"))
 	title.SetXAlign(0)
 	addClass(title, "cal-picker-title")
 	head.PackStart(title, true, true, 0)
-	p.showAll, _ = gtk.ButtonNewWithLabel("Show all")
+	p.showAll, _ = gtk.ButtonNewWithLabel(i18n.T("Show all"))
 	p.showAll.SetRelief(gtk.RELIEF_NONE)
 	p.showAll.Connect("clicked", func() {
 		for _, c := range p.cals {
@@ -154,9 +153,9 @@ func calendarSummary(cals []core.Calendar) string {
 		}
 	}
 	if shown == len(cals) {
-		return "Calendars"
+		return i18n.T("Calendars")
 	}
-	return fmt.Sprintf("Calendars %d/%d", shown, len(cals))
+	return i18n.Tf("Calendars %d/%d", shown, len(cals))
 }
 
 // calendarOwner is the second line of a calendar row: its account, or what kind of calendar it is.
@@ -165,7 +164,7 @@ func calendarOwner(c core.Calendar) string {
 	case c.Account != "":
 		return c.Account
 	case c.Source.IsLocal():
-		return "Local calendar"
+		return i18n.T("Local calendar")
 	}
-	return "CalDAV account"
+	return i18n.T("CalDAV account")
 }

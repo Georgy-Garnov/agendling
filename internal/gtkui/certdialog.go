@@ -7,6 +7,7 @@ import (
 	"github.com/gotk3/gotk3/gtk"
 
 	"github.com/Georgy-Garnov/agendling/internal/caldav"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 )
 
 // confirmCertificate shows a server certificate the system does not trust and asks whether to
@@ -19,11 +20,11 @@ func (a *App) confirmCertificate(parent gtk.IWindow, info caldav.CertInfo) bool 
 	defer dlg.Destroy()
 	dlg.SetTransientFor(parent)
 	dlg.SetModal(true)
-	dlg.SetTitle("Server certificate")
+	dlg.SetTitle(i18n.T("Server certificate"))
 	dlg.SetResizable(false) // as tall as its content
 	addClass(dlg, "settings-dialog")
-	dlg.AddButton("Cancel", gtk.RESPONSE_CANCEL)
-	dlg.AddButton("Trust this certificate", gtk.RESPONSE_ACCEPT)
+	dlg.AddButton(i18n.T("Cancel"), gtk.RESPONSE_CANCEL)
+	dlg.AddButton(i18n.T("Trust this certificate"), gtk.RESPONSE_ACCEPT)
 	dlg.SetDefaultResponse(gtk.RESPONSE_CANCEL) // trusting must be a deliberate click
 
 	body, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 10)
@@ -31,12 +32,12 @@ func (a *App) confirmCertificate(parent gtk.IWindow, info caldav.CertInfo) bool 
 	body.SetMarginEnd(18)
 	body.SetMarginTop(16)
 	body.SetMarginBottom(12)
-	title := markupLabel(`<span size="large"><b>The server's certificate is not trusted</b></span>`)
+	title := markupLabel(`<span size="large"><b>` + glib.MarkupEscapeText(i18n.T("The server's certificate is not trusted")) + `</b></span>`)
 	title.SetXAlign(0)
 	body.PackStart(title, false, false, 0)
-	intro, _ := gtk.LabelNew("Your computer does not know who issued it. That is normal for a NAS or a home server with a " +
+	intro, _ := gtk.LabelNew(i18n.T("Your computer does not know who issued it. That is normal for a NAS or a home server with a " +
 		"self-signed certificate, but it is also what an impostor's server would look like. Trust it only if this is " +
-		"your own server and the details below match it.")
+		"your own server and the details below match it."))
 	intro.SetXAlign(0)
 	intro.SetLineWrap(true)
 	intro.SetMaxWidthChars(64)
@@ -49,12 +50,12 @@ func (a *App) confirmCertificate(parent gtk.IWindow, info caldav.CertInfo) bool 
 	addClass(grid, "settings-card")
 	issuer := info.Issuer
 	if info.SelfSigned {
-		issuer += " (self-signed)"
+		issuer = i18n.Tf("%s (self-signed)", issuer)
 	}
 	for i, row := range [][2]string{
-		{"Issued to", info.Subject},
-		{"Issued by", issuer},
-		{"Valid until", info.NotAfter.Local().Format("2 January 2006")},
+		{i18n.T("Issued to"), info.Subject},
+		{i18n.T("Issued by"), issuer},
+		{i18n.T("Valid until"), i18n.Date(info.NotAfter.Local(), "2 January 2006")},
 		{"SHA-256", caldav.FingerprintLines(info.Fingerprint)},
 	} {
 		k, _ := gtk.LabelNew(row[0])

@@ -19,6 +19,7 @@ import (
 	"github.com/Georgy-Garnov/agendling/internal/appinfo"
 	"github.com/Georgy-Garnov/agendling/internal/caldav"
 	"github.com/Georgy-Garnov/agendling/internal/core"
+	"github.com/Georgy-Garnov/agendling/internal/i18n"
 	"github.com/Georgy-Garnov/agendling/internal/model"
 	"github.com/Georgy-Garnov/agendling/internal/scheduler"
 	"github.com/Georgy-Garnov/agendling/internal/storage"
@@ -138,9 +139,9 @@ func (a *App) buildMainWindow() error {
 	nav, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 0)
 	navCtx, _ := nav.GetStyleContext()
 	navCtx.AddClass("linked")
-	nav.Add(iconButton("go-previous-symbolic", "Previous", func() { a.view.navigate(-1) }))
-	nav.Add(button("Today", func() { a.view.goTo(time.Now(), a.view.mode) }))
-	nav.Add(iconButton("go-next-symbolic", "Next", func() { a.view.navigate(1) }))
+	nav.Add(iconButton("go-previous-symbolic", i18n.T("Previous"), func() { a.view.navigate(-1) }))
+	nav.Add(button(i18n.T("Today"), func() { a.view.goTo(time.Now(), a.view.mode) }))
+	nav.Add(iconButton("go-next-symbolic", i18n.T("Next"), func() { a.view.navigate(1) }))
 	hb.PackStart(nav)
 
 	a.title, _ = gtk.LabelNew("")
@@ -153,7 +154,7 @@ func (a *App) buildMainWindow() error {
 	modesCtx.AddClass("linked")
 	for m := core.ViewDay; m <= core.ViewMonth; m++ {
 		mode := m
-		tb, _ := gtk.ToggleButtonNewWithLabel(core.ViewNames[mode])
+		tb, _ := gtk.ToggleButtonNewWithLabel(i18n.T(core.ViewNames[mode]))
 		tb.Connect("toggled", func() {
 			if !a.syncing && tb.GetActive() {
 				a.view.setMode(mode)
@@ -167,9 +168,9 @@ func (a *App) buildMainWindow() error {
 	hb.PackStart(modes)
 
 	hb.PackEnd(a.appMenu())
-	hb.PackEnd(iconButton("emblem-system-symbolic", "Settings", a.showSettings))
-	hb.PackEnd(iconButton("view-refresh-symbolic", "Sync now", a.syncNow))
-	newBtn := button("New event", func() { a.newEvent(time.Now().Truncate(time.Hour).Add(time.Hour), false) })
+	hb.PackEnd(iconButton("emblem-system-symbolic", i18n.T("Settings"), a.showSettings))
+	hb.PackEnd(iconButton("view-refresh-symbolic", i18n.T("Sync now"), a.syncNow))
+	newBtn := button(i18n.T("New event"), func() { a.newEvent(time.Now().Truncate(time.Hour).Add(time.Hour), false) })
 	newCtx, _ := newBtn.GetStyleContext()
 	newCtx.AddClass("suggested-action")
 	hb.PackEnd(newBtn)
@@ -183,7 +184,7 @@ func (a *App) buildMainWindow() error {
 	// Status bar: the sync status, and the zoom of the calendar.
 	statusBar, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 6)
 	addClass(statusBar, "status-bar")
-	a.status, _ = gtk.LabelNew("Ready")
+	a.status, _ = gtk.LabelNew(i18n.T("Ready"))
 	a.status.SetXAlign(0)
 	addClass(a.status, "dim-label")
 	statusBar.PackStart(a.status, true, true, 0)
@@ -290,7 +291,7 @@ func (a *App) exit() {
 }
 
 func (a *App) syncNow() {
-	a.setStatus("Syncing…")
+	a.setStatus(i18n.T("Syncing…"))
 	a.svc.Engine.SyncNow()
 }
 
@@ -304,9 +305,9 @@ func (a *App) toggleMute() {
 		}
 	}
 	if muted {
-		a.setStatus("Notification sounds muted")
+		a.setStatus(i18n.T("Notification sounds muted"))
 	} else {
-		a.setStatus("Notification sounds on")
+		a.setStatus(i18n.T("Notification sounds on"))
 	}
 }
 
@@ -323,7 +324,7 @@ func (a *App) zoomControl() *gtk.Box {
 	a.zoomOut = flat("−", func() { a.setZoom(core.NextZoom(a.view.zoom, -1), -1) })
 	a.zoomLevel = flat("", func() { a.setZoom(core.CalendarZoomDefault, -1) })
 	a.zoomIn = flat("+", func() { a.setZoom(core.NextZoom(a.view.zoom, 1), -1) })
-	z.SetTooltipText("Calendar zoom: Ctrl+mouse wheel, Ctrl+Plus, Ctrl+Minus; Ctrl+0 or a click on the percentage resets it")
+	z.SetTooltipText(i18n.T("Calendar zoom: Ctrl+mouse wheel, Ctrl+Plus, Ctrl+Minus; Ctrl+0 or a click on the percentage resets it"))
 	for _, b := range []*gtk.Button{a.zoomOut, a.zoomLevel, a.zoomIn} {
 		z.PackStart(b, false, false, 0)
 	}
@@ -344,7 +345,7 @@ func (a *App) setZoom(percent int, y float64) {
 		return
 	}
 	if err := a.svc.SaveCalendarZoom(percent); err != nil {
-		a.setStatus("Failed to save calendar zoom: " + err.Error())
+		a.setStatus(i18n.Tf("Failed to save calendar zoom: %v", err))
 	}
 	a.view.zoomAt(percent, y)
 	a.updateZoomControl()
@@ -388,21 +389,21 @@ func (a *App) onSyncStatus(st caldav.Status) {
 		}
 		switch {
 		case st.Running:
-			a.setStatus("Syncing " + name + "…")
+			a.setStatus(i18n.Tf("Syncing %s…", name))
 		case st.Err != nil:
-			a.setStatus(name + ": sync failed — " + st.Err.Error())
+			a.setStatus(i18n.Tf("%s: sync failed — %v", name, st.Err))
 			a.syncMu.Lock()
 			prev := a.syncErrors[st.SourceID]
 			a.syncErrors[st.SourceID] = st.Err.Error()
 			a.syncMu.Unlock()
 			if prev != st.Err.Error() {
-				notify("Calendar sync failed", name+": "+st.Err.Error())
+				notify(i18n.T("Calendar sync failed"), name+": "+st.Err.Error())
 			}
 		default:
 			a.syncMu.Lock()
 			delete(a.syncErrors, st.SourceID)
 			a.syncMu.Unlock()
-			a.setStatus(fmt.Sprintf("%s synced at %s", name, time.Now().Format("15:04")))
+			a.setStatus(i18n.Tf("%s synced at %s", name, time.Now().Format("15:04")))
 		}
 		if !st.Running {
 			a.showNewEvents(st.SourceID, st.NewEvents)
@@ -442,7 +443,7 @@ func trayAvailable() bool {
 // closed, even without a tray.
 func (a *App) appMenu() *gtk.MenuButton {
 	mb, _ := gtk.MenuButtonNew()
-	mb.SetTooltipText("Menu")
+	mb.SetTooltipText(i18n.T("Menu"))
 	if img, err := gtk.ImageNewFromIconName("open-menu-symbolic", gtk.ICON_SIZE_BUTTON); err == nil {
 		mb.SetImage(img)
 	}
@@ -452,13 +453,13 @@ func (a *App) appMenu() *gtk.MenuButton {
 		mi.Connect("activate", func() { ui(f) })
 		menu.Append(mi)
 	}
-	item("Settings", a.showSettings)
-	item("About "+appinfo.Name, func() { a.showSettingsAt("about") })
+	item(i18n.T("Settings"), a.showSettings)
+	item(i18n.Tf("About %s", appinfo.Name), func() { a.showSettingsAt("about") })
 	sep, _ := gtk.SeparatorMenuItemNew()
 	menu.Append(sep)
 	quit, _ := gtk.MenuItemNew()
 	row, _ := gtk.BoxNew(gtk.ORIENTATION_HORIZONTAL, 24)
-	ql, _ := gtk.LabelNew("Quit")
+	ql, _ := gtk.LabelNew(i18n.T("Quit"))
 	ql.SetXAlign(0)
 	row.PackStart(ql, true, true, 0)
 	row.PackEnd(markupLabel(`<span foreground="#8a9099">Ctrl+Q</span>`), false, false, 0)
@@ -479,12 +480,12 @@ func (a *App) startTray() {
 		systray.SetTitle(appinfo.Name)
 		systray.SetTooltip(appinfo.Name)
 		systray.SetIcon(dateIconPNG(time.Now().Day()))
-		open := systray.AddMenuItem("Open "+appinfo.Name, "")
-		sync := systray.AddMenuItem("Sync Now", "")
-		a.muteItem = systray.AddMenuItemCheckbox("Mute Notifications", "", a.store.Settings().Muted)
-		settings := systray.AddMenuItem("Settings", "")
+		open := systray.AddMenuItem(i18n.Tf("Open %s", appinfo.Name), "")
+		sync := systray.AddMenuItem(i18n.T("Sync Now"), "")
+		a.muteItem = systray.AddMenuItemCheckbox(i18n.T("Mute Notifications"), "", a.store.Settings().Muted)
+		settings := systray.AddMenuItem(i18n.T("Settings"), "")
 		systray.AddSeparator()
-		quit := systray.AddMenuItem("Exit", "")
+		quit := systray.AddMenuItem(i18n.T("Exit"), "")
 		systray.SetOnTapped(func() { ui(a.toggleMain) })
 		go func() {
 			for {
@@ -534,8 +535,8 @@ func (a *App) askCloseWithoutTray() string {
 	dlg.SetModal(true)
 	dlg.SetTitle(appinfo.Name)
 	addClass(dlg, "settings-dialog")
-	dlg.AddButton("Quit", 1)
-	keep, _ := dlg.AddButton("Keep running", 2)
+	dlg.AddButton(i18n.T("Quit"), 1)
+	keep, _ := dlg.AddButton(i18n.T("Keep running"), 2)
 	addClass(keep, "suggested-action")
 	dlg.SetDefaultResponse(2)
 	body, _ := gtk.BoxNew(gtk.ORIENTATION_VERTICAL, 10)
@@ -543,12 +544,12 @@ func (a *App) askCloseWithoutTray() string {
 	body.SetMarginEnd(20)
 	body.SetMarginTop(16)
 	body.SetMarginBottom(12)
-	body.PackStart(markupLabel("<b>There is no system tray on this desktop</b>"), false, false, 0)
-	text := markupLabel("Agendling can keep running minimized so reminders still pop up, or quit. " +
-		"You can quit at any time with Quit in the ☰ menu or Ctrl+Q.")
+	body.PackStart(markupLabel("<b>"+glib.MarkupEscapeText(i18n.T("There is no system tray on this desktop"))+"</b>"), false, false, 0)
+	text := markupLabel(glib.MarkupEscapeText(i18n.T("Agendling can keep running minimized so reminders still pop up, or quit. " +
+		"You can quit at any time with Quit in the ☰ menu or Ctrl+Q.")))
 	text.SetMaxWidthChars(56)
 	body.PackStart(text, false, false, 0)
-	remember, _ := gtk.CheckButtonNewWithLabel("Don't ask again (change it in Settings → Startup)")
+	remember, _ := gtk.CheckButtonNewWithLabel(i18n.T("Don't ask again (change it in Settings → Startup)"))
 	body.PackStart(remember, false, false, 4)
 	content, _ := dlg.GetContentArea()
 	content.PackStart(body, true, true, 0)
